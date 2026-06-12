@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lingua-web",
+      "runtimeExecutable": "C:\\flutter\\bin\\dart.bat",
+      "runtimeArgs": ["run", "tool/serve.dart", "8099"],
+      "port": 8099
+    }
+  ]
+}

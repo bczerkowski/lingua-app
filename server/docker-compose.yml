@@ -1,0 +1,12 @@
+services:
+  image-proxy:
+    build: .
+    image: lingua-image-proxy
+    container_name: lingua-image-proxy
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+    restart: unless-stopped

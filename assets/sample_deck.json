@@ -1,0 +1,113 @@
+{
+  "catalogues": ["Everyday", "Travel", "Food", "Work"],
+  "cards": [
+    {
+      "polish": "książka",
+      "english": "book",
+      "example": "I am reading an interesting book about Poland.",
+      "definition": "A set of printed pages bound together for reading.",
+      "tags": "noun;object",
+      "catalogue": "Everyday",
+      "isCard": true
+    },
+    {
+      "polish": "dziękuję",
+      "english": "thank you",
+      "example": "Thank you very much for your help.",
+      "definition": "A polite expression used to acknowledge a kindness.",
+      "tags": "phrase;politeness",
+      "catalogue": "Everyday",
+      "isCard": true
+    },
+    {
+      "polish": "lotnisko",
+      "english": "airport",
+      "example": "Our flight leaves from the airport at noon.",
+      "definition": "A place where aircraft take off and land.",
+      "tags": "noun;place",
+      "catalogue": "Travel",
+      "isCard": true
+    },
+    {
+      "polish": "pociąg",
+      "english": "train",
+      "example": "The train to Krakow is running ten minutes late.",
+      "definition": "A connected series of railway carriages moved by a locomotive.",
+      "tags": "noun;transport",
+      "catalogue": "Travel",
+      "isCard": true
+    },
+    {
+      "polish": "bilet",
+      "english": "ticket",
+      "example": "Please show your ticket to the conductor.",
+      "definition": "A paper or card giving the holder a right to entry or travel.",
+      "tags": "noun;travel",
+      "catalogue": "Travel",
+      "isCard": true
+    },
+    {
+      "polish": "jabłko",
+      "english": "apple",
+      "example": "She ate a green apple for breakfast.",
+      "definition": "A round fruit with red or green skin and crisp flesh.",
+      "tags": "noun;food",
+      "catalogue": "Food",
+      "isCard": true
+    },
+    {
+      "polish": "woda",
+      "english": "water",
+      "example": "Could I have a glass of water, please?",
+      "definition": "A clear liquid that forms rivers, lakes, and rain.",
+      "tags": "noun;drink",
+      "catalogue": "Food",
+      "isCard": true
+    },
+    {
+      "polish": "spotkanie",
+      "english": "meeting",
+      "example": "The meeting was moved to three o'clock.",
+      "definition": "An assembly of people for discussion or decision-making.",
+      "tags": "noun;work",
+      "catalogue": "Work",
+      "isCard": true
+    },
+    {
+      "polish": "termin",
+      "english": "deadline",
+      "example": "We must finish the report before the deadline.",
+      "definition": "The latest time by which something must be completed.",
+      "tags": "noun;work",
+      "catalogue": "Work",
+      "isCard": true
+    },
+    {
+      "polish": "wczoraj",
+      "english": "yesterday",
+      "example": "Yesterday it rained the whole afternoon.",
+      "definition": "The day before today.",
+      "tags": "adverb;time",
+      "catalogue": "Everyday",
+      "isCard": true
+    },
+    {
+      "polish": "szybki",
+      "english": "fast",
+      "example": "He drives a very fast car.",
+      "definition": "Moving or able to move at high speed.",
+      "tags": "adjective",
+      "catalogue": "Everyday",
+      "isCard": false
+    },
+    {
+      "polish": "most",
+      "english": "bridge",
+      "example": "We walked across the old stone bridge.",
+      "definition": "A structure built to span a road, river, or other obstacle.",
+      "tags": "noun;place",
+      "catalogue": "Travel",
+      "isCard": false
+    }
+  ]
+}
