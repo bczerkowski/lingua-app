@@ -1,0 +1,22 @@
+# Normalize line endings: store text as LF in the repo, check out native.
+* text=auto
+
+# Always LF for these (shell scripts, web assets, configs).
+*.dart   text eol=lf
+*.js     text eol=lf
+*.json   text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.sh     text eol=lf
+Dockerfile text eol=lf
+
+# Treat as binary (no EOL conversion, no diff noise).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.wasm binary
+*.ttf  binary
+*.otf  binary
+*.pptx binary
+*.ico  binary

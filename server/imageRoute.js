@@ -2,7 +2,15 @@ import express from 'express';
 import OpenAI from 'openai';
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Lazily create the OpenAI client so the server still boots (and /health works)
+// when no key is configured — the route then returns a clear 503 instead.
+let _openai;
+function getClient() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 const ALLOWED_SIZES = new Set(['1024x1024', '1024x1536', '1536x1024', 'auto']);
 
@@ -24,6 +32,13 @@ router.post('/image', async (req, res) => {
     return res.status(400).json({ error: 'Prompt is too long (max 4000 chars).' });
   }
   const requestedSize = ALLOWED_SIZES.has(size) ? size : '1024x1024';
+
+  const openai = getClient();
+  if (!openai) {
+    return res.status(503).json({
+      error: 'Image backend not configured (OPENAI_API_KEY missing).',
+    });
+  }
 
   try {
     const result = await openai.images.generate({
