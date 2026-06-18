@@ -5,19 +5,28 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'db/database.dart';
 
-/// Seeds the database from `assets/sample_deck.json` the first time the app runs.
+/// Seeds the database from `assets/sample_deck.json` on first run, and enriches
+/// already-seeded rows when the sample data gains new fields (e.g. gender).
 class Seeder {
   final AppDatabase db;
   Seeder(this.db);
 
+  Future<List<Map<String, dynamic>>> _loadCards() async {
+    final raw = await rootBundle.loadString('assets/sample_deck.json');
+    final data = jsonDecode(raw) as Map<String, dynamic>;
+    return (data['cards'] as List).cast<Map<String, dynamic>>();
+  }
+
   Future<void> seedIfEmpty() async {
     final existing = await db.select(db.cards).get();
-    if (existing.isNotEmpty) return;
+    if (existing.isNotEmpty) {
+      await _backfill();
+      return;
+    }
 
     final raw = await rootBundle.loadString('assets/sample_deck.json');
     final data = jsonDecode(raw) as Map<String, dynamic>;
 
-    // Catalogues first, keep a name -> id map.
     final catNames = (data['catalogues'] as List).cast<String>();
     final catIds = <String, int>{};
     for (final name in catNames) {
@@ -36,13 +45,29 @@ class Seeder {
             exampleSentence: Value(c['example'] as String?),
             englishDefinition: Value(c['definition'] as String?),
             tags: Value((c['tags'] as String?) ?? ''),
+            gender: Value(c['gender'] as String?),
             catalogueId: Value(catIds[c['catalogue']]),
             isCard: Value(isCard),
-            // Stagger due dates slightly so the study queue has a natural order.
             dueDate: Value(isCard ? now : null),
           ),
         );
       }
     });
+  }
+
+  /// Non-destructive: updates existing sample rows (matched by Polish term) with
+  /// the newer gender + tag data so the upgraded UI has something to show.
+  Future<void> _backfill() async {
+    final cards = await _loadCards();
+    for (final c in cards) {
+      final polish = c['polish'] as String;
+      await (db.update(db.cards)..where((t) => t.polish.equals(polish))).write(
+        CardsCompanion(
+          gender: Value(c['gender'] as String?),
+          tags: Value((c['tags'] as String?) ?? ''),
+          exampleSentence: Value(c['example'] as String?),
+        ),
+      );
+    }
   }
 }

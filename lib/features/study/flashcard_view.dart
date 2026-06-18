@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
+import '../../theme.dart';
 
 /// A single flippable flashcard. Tap to reveal the back.
 class FlashcardView extends StatefulWidget {
@@ -79,15 +80,9 @@ class _CardFace extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
       ),
       child: child,
     );
@@ -100,25 +95,48 @@ class _TagHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tags = card.tags.split(';').where((t) => t.trim().isNotEmpty).toList();
-    if (tags.isEmpty) return const SizedBox(height: 4);
+    final all = card.tags
+        .split(';')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final pos = all.isNotEmpty ? all.first : null;
+    final topics = all.length > 1 ? all.sublist(1) : <String>[];
+    if (pos == null && card.gender == null) return const SizedBox(height: 4);
+
     return Wrap(
-      spacing: 6,
-      runSpacing: 4,
+      spacing: 7,
+      runSpacing: 6,
+      alignment: WrapAlignment.center,
       children: [
-        for (final t in tags)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(t,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer)),
-          ),
+        if (pos != null)
+          _pill(pos.toUpperCase(), AppTheme.sand, const Color(0xFF55524B),
+              bold: true),
+        if (card.gender != null)
+          _pill(card.gender!.toUpperCase(), const Color(0xFFEFE2CC),
+              const Color(0xFF8A6A3B),
+              bold: true),
+        for (final t in topics)
+          _pill('#$t', Colors.white, AppTheme.muted, border: true),
       ],
+    );
+  }
+
+  Widget _pill(String text, Color bg, Color fg,
+      {bool bold = false, bool border = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: border ? Border.all(color: AppTheme.border) : null,
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              letterSpacing: bold ? 0.5 : 0,
+              color: fg)),
     );
   }
 }
@@ -130,27 +148,36 @@ class _TargetLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Flexible(
           child: Text(card.polish,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+              style: const TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5)),
         ),
         IconButton(
-          icon: const Icon(Icons.volume_up, size: 20),
+          icon: const Icon(Icons.volume_up_rounded, size: 20),
+          color: scheme.primary,
           tooltip: 'Hear Polish',
           onPressed: () => onSpeak(card.polish, 'pl-PL'),
         ),
-        const Text('·', style: TextStyle(fontSize: 24, color: Colors.grey)),
+        Text('·', style: TextStyle(fontSize: 24, color: Colors.grey.shade300)),
         Flexible(
           child: Text(card.english,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w400)),
+              style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black)),
         ),
         IconButton(
-          icon: const Icon(Icons.volume_up, size: 20),
+          icon: const Icon(Icons.volume_up_rounded, size: 20),
+          color: scheme.primary,
           tooltip: 'Hear English',
           onPressed: () => onSpeak(card.english, 'en-US'),
         ),
@@ -173,8 +200,25 @@ class _Front extends StatelessWidget {
         const SizedBox(height: 28),
         _TargetLine(card: card, onSpeak: onSpeak),
         const SizedBox(height: 28),
-        Text('Tap to reveal',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppTheme.sand,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined, size: 15, color: AppTheme.muted),
+              SizedBox(width: 6),
+              Text('Tap to reveal',
+                  style: TextStyle(
+                      color: AppTheme.muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -215,7 +259,7 @@ class _Back extends StatelessWidget {
         ],
         if (card.englishDefinition != null)
           Text(card.englishDefinition!,
-              style: const TextStyle(fontSize: 15, color: Colors.black87)),
+              style: const TextStyle(fontSize: 15, color: Colors.black)),
         const SizedBox(height: 18),
         _ImageAnchor(card: card),
       ],
@@ -233,9 +277,9 @@ class _ImageAnchor extends StatelessWidget {
       aspectRatio: 16 / 9,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade300),
+          color: AppTheme.sand,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: card.imageBytes != null
@@ -244,10 +288,10 @@ class _ImageAnchor extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.image_outlined, color: Colors.grey, size: 30),
+                    Icon(Icons.image_outlined, color: AppTheme.muted, size: 30),
                     SizedBox(height: 6),
                     Text('No image yet — add one in the editor',
-                        style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        style: TextStyle(color: AppTheme.muted, fontSize: 12)),
                   ],
                 ),
               ),

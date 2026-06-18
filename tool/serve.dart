@@ -37,8 +37,6 @@ Future<void> main(List<String> args) async {
       final ext = p.contains('.') ? p.substring(p.lastIndexOf('.')) : '';
       req.response.headers
           .set('Content-Type', _types[ext] ?? 'application/octet-stream');
-      req.response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-      req.response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
       await req.response.addStream(file.openRead());
     } catch (_) {
       req.response.statusCode = HttpStatus.internalServerError;

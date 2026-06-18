@@ -18,14 +18,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [DictionaryScreen(), StudyScreen()],
+        children: [
+          DictionaryScreen(onStudyTap: () => setState(() => _index = 1)),
+          const StudyScreen(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           NavigationDestination(
-              icon: Icon(Icons.search), label: 'Dictionary'),
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: 'Dictionary'),
           NavigationDestination(
               icon: Icon(Icons.style_outlined),
               selectedIcon: Icon(Icons.style),

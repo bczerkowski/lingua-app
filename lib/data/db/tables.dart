@@ -22,8 +22,12 @@ class Cards extends Table {
   TextColumn get exampleSentence => text().nullable()();
   TextColumn get englishDefinition => text().nullable()();
 
-  // Domain tags stored as a ';'-separated string (simple + portable).
+  // Domain tags stored as a ';'-separated string. By convention the first tag
+  // is the part of speech (e.g. "noun") and the rest are topics ("animals").
   TextColumn get tags => text().withDefault(const Constant(''))();
+
+  // Grammatical gender for nouns: 'm', 'f', 'n', or null.
+  TextColumn get gender => text().nullable()();
 
   IntColumn get catalogueId => integer()
       .nullable()

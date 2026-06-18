@@ -4,6 +4,7 @@ import 'app_services.dart';
 import 'data/db/database.dart';
 import 'data/seed.dart';
 import 'features/home/home_screen.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,11 +28,16 @@ class LinguaApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Lingua — PL/EN',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3D5AFE)),
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF6F7FB),
-        ),
+        theme: AppTheme.light(),
+        // Scale all text up ~15% for easier reading (on top of any system setting).
+        builder: (context, child) {
+          final factor = MediaQuery.textScalerOf(context).scale(1) * 1.15;
+          return MediaQuery.withClampedTextScaling(
+            minScaleFactor: factor,
+            maxScaleFactor: factor,
+            child: child!,
+          );
+        },
         // Gate the UI on the seed future so screens query a populated DB,
         // while still showing a spinner instead of a blank screen.
         home: FutureBuilder<void>(

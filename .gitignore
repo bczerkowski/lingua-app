@@ -57,3 +57,6 @@ server/.env
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Compiled static server binary
+tool/serve.exe

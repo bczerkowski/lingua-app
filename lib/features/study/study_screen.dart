@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_services.dart';
 import '../../services/srs/srs_scheduler.dart';
+import '../../theme.dart';
 import '../editor/card_editor_screen.dart';
 import 'flashcard_view.dart';
 import 'study_controller.dart';
@@ -140,34 +141,42 @@ class _GradeBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
+      // Warm ramp in the Claude palette: neutral -> sand -> coral -> ink.
       child: Row(
         children: [
-          _btn(context, 'Again', Colors.red, ReviewGrade.again),
-          _btn(context, 'Hard', Colors.orange, ReviewGrade.hard),
-          _btn(context, 'Good', Colors.green, ReviewGrade.good),
-          _btn(context, 'Easy', Colors.blue, ReviewGrade.easy),
+          _btn('Again', AppTheme.surface, AppTheme.ink,
+              border: AppTheme.border, grade: ReviewGrade.again),
+          _btn('Hard', AppTheme.sand, AppTheme.ink, grade: ReviewGrade.hard),
+          _btn('Good', AppTheme.coral, Colors.white, grade: ReviewGrade.good),
+          _btn('Easy', AppTheme.ink, Colors.white, grade: ReviewGrade.easy),
         ],
       ),
     );
   }
 
-  Widget _btn(BuildContext context, String label, Color color, ReviewGrade g) {
+  Widget _btn(String label, Color bg, Color fg,
+      {Color? border, required ReviewGrade grade}) {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: color,
-            foregroundColor: Colors.white,
+            backgroundColor: bg,
+            foregroundColor: fg,
             padding: const EdgeInsets.symmetric(vertical: 12),
+            elevation: 0,
+            side: BorderSide(color: border ?? bg, width: 1),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
           ),
-          onPressed: () => onGrade(g),
+          onPressed: () => onGrade(grade),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(preview(g),
-                  style: const TextStyle(fontSize: 11, color: Colors.white70)),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(preview(grade),
+                  style:
+                      TextStyle(fontSize: 11, color: fg.withValues(alpha: 0.7))),
             ],
           ),
         ),
@@ -187,7 +196,7 @@ class _DoneView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.celebration, size: 56, color: Colors.green),
+          const Icon(Icons.check_circle_outline, size: 56, color: AppTheme.coral),
           const SizedBox(height: 12),
           Text(reviewed == 0 ? 'No cards due right now' : 'Session complete!',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),

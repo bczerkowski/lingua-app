@@ -13,7 +13,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(cards, cards.gender);
+          }
+        },
+      );
 
   // ---------------------------------------------------------------------------
   // Catalogues
@@ -57,6 +67,18 @@ class AppDatabase extends _$AppDatabase {
       ..limit(limit);
     if (catalogueId != null) q.where((t) => t.catalogueId.equals(catalogueId));
     return q.get();
+  }
+
+  /// Live count of cards currently due for study.
+  Stream<int> watchDueCount() {
+    final now = DateTime.now();
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(cards.isCard.equals(true) &
+          cards.suspended.equals(false) &
+          (cards.dueDate.isSmallerOrEqualValue(now) | cards.dueDate.isNull()));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
 
   Future<int> countCards() async {

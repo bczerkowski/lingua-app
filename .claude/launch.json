@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "lingua-web",
-      "runtimeExecutable": "C:\\flutter\\bin\\dart.bat",
-      "runtimeArgs": ["run", "tool/serve.dart", "8099"],
+      "runtimeExecutable": "C:\\Users\\ae4770\\TODAY\\tool\\serve.exe",
+      "runtimeArgs": ["8099"],
       "port": 8099
     }
   ]
