@@ -309,15 +309,15 @@ class _EntryRow extends StatelessWidget {
   Widget _addButton(BuildContext context) {
     if (card.isCard) {
       return Container(
-        width: 46,
-        height: 46,
+        width: 54,
+        height: 54,
         decoration: const BoxDecoration(
           color: AppTheme.coral,
           shape: BoxShape.circle,
         ),
         child: const Tooltip(
           message: 'In study deck',
-          child: Icon(Icons.check_rounded, color: Colors.white, size: 24),
+          child: Icon(Icons.check_rounded, color: Colors.white, size: 28),
         ),
       );
     }
@@ -335,11 +335,11 @@ class _EntryRow extends StatelessWidget {
           }
         },
         child: const SizedBox(
-          width: 46,
-          height: 46,
+          width: 54,
+          height: 54,
           child: Tooltip(
             message: 'Add to study deck',
-            child: Icon(Icons.add_rounded, color: Colors.white, size: 26),
+            child: Icon(Icons.add_rounded, color: Colors.white, size: 30),
           ),
         ),
       ),

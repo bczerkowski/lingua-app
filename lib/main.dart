@@ -29,9 +29,9 @@ class LinguaApp extends StatelessWidget {
         title: 'Lingua — PL/EN',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        // Scale all text up ~15% for easier reading (on top of any system setting).
+        // Scale all text up ~30% for easier reading (on top of any system setting).
         builder: (context, child) {
-          final factor = MediaQuery.textScalerOf(context).scale(1) * 1.15;
+          final factor = MediaQuery.textScalerOf(context).scale(1) * 1.3;
           return MediaQuery.withClampedTextScaling(
             minScaleFactor: factor,
             maxScaleFactor: factor,
