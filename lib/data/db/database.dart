@@ -23,6 +23,15 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(cards, cards.gender);
           }
         },
+        beforeOpen: (details) async {
+          // Defensive: guarantee the `gender` column exists even if a prior
+          // migration left the (web) database in an inconsistent state.
+          final cols = await customSelect("PRAGMA table_info('cards')").get();
+          final hasGender = cols.any((r) => r.read<String>('name') == 'gender');
+          if (!hasGender) {
+            await customStatement('ALTER TABLE cards ADD COLUMN gender TEXT');
+          }
+        },
       );
 
   // ---------------------------------------------------------------------------

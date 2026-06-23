@@ -57,17 +57,23 @@ class Seeder {
 
   /// Non-destructive: updates existing sample rows (matched by Polish term) with
   /// the newer gender + tag data so the upgraded UI has something to show.
+  /// Best-effort — never let a backfill problem block app launch.
   Future<void> _backfill() async {
-    final cards = await _loadCards();
-    for (final c in cards) {
-      final polish = c['polish'] as String;
-      await (db.update(db.cards)..where((t) => t.polish.equals(polish))).write(
-        CardsCompanion(
-          gender: Value(c['gender'] as String?),
-          tags: Value((c['tags'] as String?) ?? ''),
-          exampleSentence: Value(c['example'] as String?),
-        ),
-      );
+    try {
+      final cards = await _loadCards();
+      for (final c in cards) {
+        final polish = c['polish'] as String;
+        await (db.update(db.cards)..where((t) => t.polish.equals(polish)))
+            .write(
+          CardsCompanion(
+            gender: Value(c['gender'] as String?),
+            tags: Value((c['tags'] as String?) ?? ''),
+            exampleSentence: Value(c['example'] as String?),
+          ),
+        );
+      }
+    } catch (_) {
+      // Ignore: the app works fine without the enrichment.
     }
   }
 }
