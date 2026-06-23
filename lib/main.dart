@@ -11,7 +11,7 @@ Future<void> main() async {
 
   final db = AppDatabase();
   // Seed in the background so a slow/failed DB open never blocks first paint.
-  final seeded = Seeder(db).seedIfEmpty();
+  final seeded = Seeder(db).seedIfNeeded();
 
   runApp(LinguaApp(services: AppServices(db: db), seeded: seeded));
 }

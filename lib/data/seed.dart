@@ -5,24 +5,17 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'db/database.dart';
 
-/// Seeds the database from `assets/sample_deck.json` on first run, and enriches
-/// already-seeded rows when the sample data gains new fields (e.g. gender).
+/// Seeds the sample deck on the very first run only.
 class Seeder {
   final AppDatabase db;
   Seeder(this.db);
 
-  Future<List<Map<String, dynamic>>> _loadCards() async {
-    final raw = await rootBundle.loadString('assets/sample_deck.json');
-    final data = jsonDecode(raw) as Map<String, dynamic>;
-    return (data['cards'] as List).cast<Map<String, dynamic>>();
-  }
-
-  Future<void> seedIfEmpty() async {
-    final existing = await db.select(db.cards).get();
-    if (existing.isNotEmpty) {
-      await _backfill();
-      return;
-    }
+  /// Seeds once, then never again. We use the presence of catalogues — which
+  /// persist even after every card is deleted — as the "already initialized"
+  /// marker, so the user's deletions are never undone by a re-seed.
+  Future<void> seedIfNeeded() async {
+    final cats = await db.select(db.catalogues).get();
+    if (cats.isNotEmpty) return;
 
     final raw = await rootBundle.loadString('assets/sample_deck.json');
     final data = jsonDecode(raw) as Map<String, dynamic>;
@@ -52,26 +45,5 @@ class Seeder {
         );
       }
     });
-  }
-
-  /// Non-destructive: updates existing sample rows (matched by Polish term) with
-  /// the newer gender + tag data so the upgraded UI has something to show.
-  /// Best-effort — never let a backfill problem block app launch.
-  Future<void> _backfill() async {
-    try {
-      final cards = await _loadCards();
-      for (final c in cards) {
-        final polish = c['polish'] as String;
-        await (db.update(db.cards)..where((t) => t.polish.equals(polish)))
-            .write(
-          CardsCompanion(
-            tags: Value((c['tags'] as String?) ?? ''),
-            exampleSentence: Value(c['example'] as String?),
-          ),
-        );
-      }
-    } catch (_) {
-      // Ignore: the app works fine without the enrichment.
-    }
   }
 }
