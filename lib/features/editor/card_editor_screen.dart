@@ -27,7 +27,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   final _tags = TextEditingController();
 
   int? _catalogueId;
-  String? _gender; // 'm' | 'f' | 'n' | null
   bool _isCard = true;
   Uint8List? _imageBytes;
   String? _imageSource;
@@ -58,7 +57,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _definition.text = c.englishDefinition ?? '';
       _tags.text = c.tags;
       _catalogueId = c.catalogueId;
-      _gender = c.gender;
       _isCard = c.isCard;
       _imageBytes = c.imageBytes;
       _imageSource = c.imageSource;
@@ -99,21 +97,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             _field(_definition, 'English definition', maxLines: 2),
             _field(_tags, 'Tags — first is part of speech (e.g. noun;animals)'),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String?>(
-              initialValue: _gender,
-              decoration: const InputDecoration(
-                labelText: 'Gender (nouns)',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem<String?>(value: null, child: Text('— none —')),
-                DropdownMenuItem<String?>(value: 'm', child: Text('Masculine (m)')),
-                DropdownMenuItem<String?>(value: 'f', child: Text('Feminine (f)')),
-                DropdownMenuItem<String?>(value: 'n', child: Text('Neuter (n)')),
-              ],
-              onChanged: (v) => setState(() => _gender = v),
-            ),
-            const SizedBox(height: 12),
             _CatalogueDropdown(
               db: db,
               value: _catalogueId,
@@ -326,7 +309,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             exampleSentence: Value(_nullIfEmpty(_example.text)),
             englishDefinition: Value(_nullIfEmpty(_definition.text)),
             tags: Value(_tags.text.trim()),
-            gender: Value(_gender),
             catalogueId: Value(_catalogueId),
             imageBytes: Value(_imageBytes),
             imageSource: Value(_imageSource),
@@ -341,7 +323,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         exampleSentence: Value(_nullIfEmpty(_example.text)),
         englishDefinition: Value(_nullIfEmpty(_definition.text)),
         tags: Value(_tags.text.trim()),
-        gender: Value(_gender),
         catalogueId: Value(_catalogueId),
         imageBytes: Value(_imageBytes),
         imageSource: Value(_imageSource),

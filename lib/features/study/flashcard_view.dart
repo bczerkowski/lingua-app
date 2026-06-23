@@ -102,7 +102,7 @@ class _TagHeader extends StatelessWidget {
         .toList();
     final pos = all.isNotEmpty ? all.first : null;
     final topics = all.length > 1 ? all.sublist(1) : <String>[];
-    if (pos == null && card.gender == null) return const SizedBox(height: 4);
+    if (all.isEmpty) return const SizedBox(height: 4);
 
     return Wrap(
       spacing: 7,
@@ -111,10 +111,6 @@ class _TagHeader extends StatelessWidget {
       children: [
         if (pos != null)
           _pill(pos.toUpperCase(), AppTheme.sand, const Color(0xFF55524B),
-              bold: true),
-        if (card.gender != null)
-          _pill(card.gender!.toUpperCase(), const Color(0xFFEFE2CC),
-              const Color(0xFF8A6A3B),
               bold: true),
         for (final t in topics)
           _pill('#$t', Colors.white, AppTheme.muted, border: true),

@@ -45,7 +45,6 @@ class Seeder {
             exampleSentence: Value(c['example'] as String?),
             englishDefinition: Value(c['definition'] as String?),
             tags: Value((c['tags'] as String?) ?? ''),
-            gender: Value(c['gender'] as String?),
             catalogueId: Value(catIds[c['catalogue']]),
             isCard: Value(isCard),
             dueDate: Value(isCard ? now : null),
@@ -66,7 +65,6 @@ class Seeder {
         await (db.update(db.cards)..where((t) => t.polish.equals(polish)))
             .write(
           CardsCompanion(
-            gender: Value(c['gender'] as String?),
             tags: Value((c['tags'] as String?) ?? ''),
             exampleSentence: Value(c['example'] as String?),
           ),

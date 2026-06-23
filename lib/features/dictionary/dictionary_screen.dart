@@ -391,7 +391,6 @@ class _EntryRow extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         if (pos != null) _posPill(pos),
-        if (card.gender != null) _genderPill(card.gender!),
         for (final t in topics) _topicPill(t),
       ],
     );
@@ -409,20 +408,6 @@ class _EntryRow extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
                 color: Color(0xFF55524B))),
-      );
-
-  Widget _genderPill(String g) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEFE2CC),
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Text(g.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
-                color: Color(0xFF8A6A3B))),
       );
 
   Widget _topicPill(String t) => Container(
