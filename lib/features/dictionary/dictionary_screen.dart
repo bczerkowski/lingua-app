@@ -16,6 +16,70 @@ class DictionaryScreen extends StatefulWidget {
 
 class _DictionaryScreenState extends State<DictionaryScreen> {
   String _query = '';
+  bool _selectMode = false;
+  final Set<int> _selected = {};
+
+  void _enterSelect([int? first]) {
+    setState(() {
+      _selectMode = true;
+      if (first != null) _selected.add(first);
+    });
+  }
+
+  void _exitSelect() {
+    setState(() {
+      _selectMode = false;
+      _selected.clear();
+    });
+  }
+
+  void _toggle(int id) {
+    setState(() {
+      if (!_selected.remove(id)) _selected.add(id);
+      if (_selected.isEmpty) _selectMode = false;
+    });
+  }
+
+  Future<void> _deleteSelected(AppDatabase db) async {
+    final count = _selected.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $count ${count == 1 ? 'entry' : 'entries'}?'),
+        content: const Text('This permanently removes them and cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    // Snapshot the rows first so the delete can be undone.
+    final ids = _selected.toList();
+    final removed = await db.getCards(ids);
+    await db.deleteCards(ids);
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Deleted $count ${count == 1 ? 'entry' : 'entries'}'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Undo',
+          textColor: Colors.white,
+          onPressed: () => db.restoreCards(removed),
+        ),
+      ),
+    );
+    _exitSelect();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,18 +87,20 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     final db = services.db;
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(context, null),
-        icon: const Icon(Icons.add, size: 24),
-        label: const Text('New entry', style: TextStyle(fontSize: 16)),
-      ),
+      floatingActionButton: _selectMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openEditor(context, null),
+              icon: const Icon(Icons.add, size: 24),
+              label: const Text('New entry', style: TextStyle(fontSize: 16)),
+            ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _Header(db: db, onStudyTap: widget.onStudyTap),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
               child: TextField(
                 style: const TextStyle(fontSize: 17),
                 decoration: const InputDecoration(
@@ -48,26 +114,62 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
               child: StreamBuilder<List<Flashcard>>(
                 stream: db.searchEntries(_query),
                 builder: (context, snap) {
-                  final items = snap.data ?? const [];
+                  final items = snap.data ?? const <Flashcard>[];
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (items.isEmpty) {
                     return Center(
                       child: Text('No matching entries.',
-                          style: TextStyle(
-                              fontSize: 16, color: AppTheme.muted)),
+                          style: TextStyle(fontSize: 16, color: AppTheme.muted)),
                     );
                   }
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
-                    itemCount: items.length,
-                    itemBuilder: (context, i) => _EntryRow(
-                      card: items[i],
-                      services: services,
-                      db: db,
-                      onTap: () => _openEditor(context, items[i].id),
-                    ),
+                  return Column(
+                    children: [
+                      _ActionBar(
+                        selectMode: _selectMode,
+                        selectedCount: _selected.length,
+                        totalCount: items.length,
+                        allSelected: _selected.length == items.length,
+                        onEnterSelect: () => _enterSelect(),
+                        onCancel: _exitSelect,
+                        onToggleAll: () => setState(() {
+                          if (_selected.length == items.length) {
+                            _selected.clear();
+                            _selectMode = false;
+                          } else {
+                            _selected
+                              ..clear()
+                              ..addAll(items.map((e) => e.id));
+                          }
+                        }),
+                        onDelete: () => _deleteSelected(db),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
+                          itemCount: items.length,
+                          itemBuilder: (context, i) {
+                            final card = items[i];
+                            return _EntryRow(
+                              card: card,
+                              services: services,
+                              db: db,
+                              selectMode: _selectMode,
+                              selected: _selected.contains(card.id),
+                              onTap: () {
+                                if (_selectMode) {
+                                  _toggle(card.id);
+                                } else {
+                                  _openEditor(context, card.id);
+                                }
+                              },
+                              onLongPress: () => _enterSelect(card.id),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -85,69 +187,78 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   }
 }
 
-/// Eyebrow label, serif title, and a live "cards due — study now" link.
-class _Header extends StatelessWidget {
-  final AppDatabase db;
-  final VoidCallback onStudyTap;
-  const _Header({required this.db, required this.onStudyTap});
+/// Either a "Select" entry point, or the multi-select toolbar (count, select
+/// all, delete, cancel).
+class _ActionBar extends StatelessWidget {
+  final bool selectMode;
+  final int selectedCount;
+  final int totalCount;
+  final bool allSelected;
+  final VoidCallback onEnterSelect;
+  final VoidCallback onCancel;
+  final VoidCallback onToggleAll;
+  final VoidCallback onDelete;
+  const _ActionBar({
+    required this.selectMode,
+    required this.selectedCount,
+    required this.totalCount,
+    required this.allSelected,
+    required this.onEnterSelect,
+    required this.onCancel,
+    required this.onToggleAll,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (!selectMode) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 14, 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton.icon(
+              onPressed: onEnterSelect,
+              icon: const Icon(Icons.check_box_outlined, size: 20),
+              label: const Text('Select', style: TextStyle(fontSize: 15)),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.sand,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
         children: [
-          Text('SŁOWNIK · DICTIONARY',
-              style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.8,
-                  color: AppTheme.muted)),
-          const SizedBox(height: 2),
-          Text('Lexicon',
-              style: GoogleFonts.sourceSerif4(
-                  fontSize: 38,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.5,
-                  color: AppTheme.ink)),
-          const SizedBox(height: 6),
-          StreamBuilder<int>(
-            stream: db.watchDueCount(),
-            builder: (context, snap) {
-              final due = snap.data ?? 0;
-              if (due == 0) {
-                return Row(
-                  children: [
-                    const Icon(Icons.check_circle_outline,
-                        size: 19, color: AppTheme.muted),
-                    const SizedBox(width: 7),
-                    Text('No cards due right now',
-                        style: TextStyle(
-                            fontSize: 16, color: AppTheme.muted)),
-                  ],
-                );
-              }
-              return InkWell(
-                onTap: onStudyTap,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.school_outlined,
-                          size: 20, color: AppTheme.coralDark),
-                      const SizedBox(width: 7),
-                      Text('$due cards due — study now →',
-                          style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.coralDark)),
-                    ],
-                  ),
-                ),
-              );
-            },
+          IconButton(
+            onPressed: onCancel,
+            icon: const Icon(Icons.close),
+            tooltip: 'Cancel',
+          ),
+          Expanded(
+            child: Text('$selectedCount selected',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: onToggleAll,
+            child: Text(allSelected ? 'Clear all' : 'Select all',
+                style: const TextStyle(fontSize: 15)),
+          ),
+          const SizedBox(width: 4),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onPressed: selectedCount == 0 ? null : onDelete,
+            icon: const Icon(Icons.delete_outline, size: 20),
+            label: const Text('Delete'),
           ),
         ],
       ),
@@ -156,42 +267,65 @@ class _Header extends StatelessWidget {
 }
 
 /// A rich dictionary row: target line, example sentence, and a tag strip
-/// (part of speech, gender, topics) with a circular add/added button.
+/// (part of speech, gender, topics). In select mode it shows a checkbox.
 class _EntryRow extends StatelessWidget {
   final Flashcard card;
   final AppServices services;
   final AppDatabase db;
+  final bool selectMode;
+  final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   const _EntryRow({
     required this.card,
     required this.services,
     required this.db,
+    required this.selectMode,
+    required this.selected,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    final allTags =
-        card.tags.split(';').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+    final allTags = card.tags
+        .split(';')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
     final pos = allTags.isNotEmpty ? allTags.first : null;
     final topics = allTags.length > 1 ? allTags.sublist(1) : <String>[];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: AppTheme.surface,
+        color: selected ? const Color(0xFFFBEEE8) : AppTheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: AppTheme.border),
+          side: BorderSide(
+            color: selected ? AppTheme.coral : AppTheme.border,
+            width: selected ? 1.6 : 1,
+          ),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                if (selectMode) ...[
+                  Icon(
+                    selected
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded,
+                    color: selected ? AppTheme.coral : AppTheme.muted,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 14),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,7 +346,7 @@ class _EntryRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                _addButton(context),
+                if (!selectMode) _addButton(context),
               ],
             ),
           ),
@@ -236,14 +370,12 @@ class _EntryRow extends StatelessWidget {
           customBorder: const CircleBorder(),
           child: const Padding(
             padding: EdgeInsets.all(3),
-            child: Icon(Icons.volume_up_rounded,
-                size: 19, color: AppTheme.muted),
+            child: Icon(Icons.volume_up_rounded, size: 19, color: AppTheme.muted),
           ),
         ),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text('·',
-              style: TextStyle(fontSize: 19, color: AppTheme.muted)),
+          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
         ),
         Text(card.english,
             style: const TextStyle(
@@ -301,9 +433,7 @@ class _EntryRow extends StatelessWidget {
         ),
         child: Text('#$t',
             style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.muted)),
+                fontSize: 11.5, fontWeight: FontWeight.w500, color: AppTheme.muted)),
       );
 
   Widget _addButton(BuildContext context) {
@@ -342,6 +472,75 @@ class _EntryRow extends StatelessWidget {
             child: Icon(Icons.add_rounded, color: Colors.white, size: 30),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Eyebrow label, serif title, and a live "cards due — study now" link.
+class _Header extends StatelessWidget {
+  final AppDatabase db;
+  final VoidCallback onStudyTap;
+  const _Header({required this.db, required this.onStudyTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('SŁOWNIK · DICTIONARY',
+              style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.8,
+                  color: AppTheme.muted)),
+          const SizedBox(height: 2),
+          Text('Lexicon',
+              style: GoogleFonts.sourceSerif4(
+                  fontSize: 38,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.5,
+                  color: AppTheme.ink)),
+          const SizedBox(height: 6),
+          StreamBuilder<int>(
+            stream: db.watchDueCount(),
+            builder: (context, snap) {
+              final due = snap.data ?? 0;
+              if (due == 0) {
+                return Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline,
+                        size: 19, color: AppTheme.muted),
+                    const SizedBox(width: 7),
+                    Text('No cards due right now',
+                        style: TextStyle(fontSize: 16, color: AppTheme.muted)),
+                  ],
+                );
+              }
+              return InkWell(
+                onTap: onStudyTap,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.school_outlined,
+                          size: 20, color: AppTheme.coralDark),
+                      const SizedBox(width: 7),
+                      Text('$due cards due — study now →',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.coralDark)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

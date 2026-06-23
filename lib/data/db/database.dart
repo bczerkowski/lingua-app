@@ -120,6 +120,28 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteCard(int id) =>
       (delete(cards)..where((t) => t.id.equals(id))).go();
 
+  /// Fetch full rows for the given ids (used to snapshot before a bulk delete).
+  Future<List<Flashcard>> getCards(List<int> ids) {
+    if (ids.isEmpty) return Future.value(const []);
+    return (select(cards)..where((t) => t.id.isIn(ids))).get();
+  }
+
+  /// Bulk delete by id (used by the dictionary's multi-select mode).
+  Future<int> deleteCards(List<int> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    return (delete(cards)..where((t) => t.id.isIn(ids))).go();
+  }
+
+  /// Re-insert previously deleted rows (with their original ids) for undo.
+  Future<void> restoreCards(List<Flashcard> rows) async {
+    if (rows.isEmpty) return;
+    await batch((b) {
+      for (final r in rows) {
+        b.insert(cards, r.toCompanion(false), mode: InsertMode.insertOrReplace);
+      }
+    });
+  }
+
   Future<Flashcard?> getCard(int id) =>
       (select(cards)..where((t) => t.id.equals(id))).getSingleOrNull();
 }
