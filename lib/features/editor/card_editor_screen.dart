@@ -239,19 +239,71 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     }
   }
 
+  static const _suggestedTags = [
+    'academic',
+    'travel',
+    'business',
+    'aviation',
+    'daily English',
+    'difficult',
+    'phrasal verb',
+    'false friend',
+    'Academic English',
+    'Aviation English',
+    'Customer English',
+    'Business English',
+  ];
+
   Future<void> _suggestTags() async {
-    if (!_needEnglish()) return;
-    final d = await _assist.lookup(_english.text.trim());
-    if (!mounted) return;
-    if (d != null && d.partsOfSpeech.isNotEmpty) {
-      setState(() {
-        for (final p in d.partsOfSpeech) {
-          if (!_tagList.contains(p)) _tagList.add(p);
-        }
-      });
-    } else {
-      _toast('No tag suggestions found');
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Suggested tags',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('Tap to add or remove.',
+                  style: TextStyle(color: AppTheme.muted, fontSize: 13)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final t in _suggestedTags)
+                    FilterChip(
+                      label: Text(t),
+                      selected: _tagList.contains(t),
+                      showCheckmark: true,
+                      onSelected: (sel) => setSheet(() {
+                        if (sel) {
+                          if (!_tagList.contains(t)) _tagList.add(t);
+                        } else {
+                          _tagList.remove(t);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {}); // rebuild the chip editor with new tags
   }
 
   // ---------------------------------------------------------------------------
@@ -267,77 +319,92 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             const Text('Visual anchor',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 10),
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
+            if (_generating)
+              const SizedBox(
+                height: 60,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_imageBytes != null)
+              // Compact preview + change/remove (no longer fills the screen).
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.memory(_imageBytes!,
+                        width: 132, height: 88, fit: BoxFit.cover),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.image_outlined, size: 18),
+                          label: const Text('Change image'),
+                          onPressed: _pickFile,
+                        ),
+                        const SizedBox(height: 6),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: const Text('Remove image'),
+                          style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFB3261E)),
+                          onPressed: () => setState(() {
+                            _imageBytes = null;
+                            _imageSource = null;
+                          }),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              if (_imageError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber,
+                            color: Colors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text('Generation failed: $_imageError',
+                              style: const TextStyle(fontSize: 13)),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: _generating
-                    ? const Center(child: CircularProgressIndicator())
-                    : _imageBytes != null
-                        ? Image.memory(_imageBytes!, fit: BoxFit.cover)
-                        : const Center(
-                            child: Text('No image',
-                                style: TextStyle(color: Colors.grey))),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('Generate with AI'),
+                    onPressed: _generating ? null : _generateImage,
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.upload_file, size: 18),
+                    label: const Text('PNG / JPG / PDF'),
+                    onPressed: _pickFile,
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.content_paste, size: 18),
+                    label: const Text('Paste screenshot'),
+                    onPressed: _pasteScreenshot,
+                  ),
+                ],
               ),
-            ),
-            if (_imageError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning_amber,
-                          color: Colors.orange, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text('Generation failed: $_imageError',
-                            style: const TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.auto_awesome, size: 18),
-                  label: const Text('Generate with AI'),
-                  onPressed: _generating ? null : _generateImage,
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('PNG / JPG / PDF'),
-                  onPressed: _pickFile,
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.content_paste, size: 18),
-                  label: const Text('Paste screenshot'),
-                  onPressed: _pasteScreenshot,
-                ),
-                if (_imageBytes != null)
-                  TextButton.icon(
-                    icon: const Icon(Icons.clear, size: 18),
-                    label: const Text('Remove'),
-                    onPressed: () => setState(() {
-                      _imageBytes = null;
-                      _imageSource = null;
-                    }),
-                  ),
-              ],
-            ),
+            ],
           ],
         ),
       ),

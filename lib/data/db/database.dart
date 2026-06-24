@@ -5,6 +5,20 @@ import 'tables.dart';
 
 part 'database.g.dart';
 
+/// Aggregate counts for the study progress view.
+class DeckStats {
+  final int total;
+  final int learned;
+  final int difficult;
+  final int dueToday;
+  const DeckStats({
+    required this.total,
+    required this.learned,
+    required this.difficult,
+    required this.dueToday,
+  });
+}
+
 @DriftDatabase(tables: [Catalogues, Cards])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
@@ -130,6 +144,30 @@ class AppDatabase extends _$AppDatabase {
           ..addColumns([c]))
         .getSingle();
     return row.read(c) ?? 0;
+  }
+
+  Future<int> _count(Expression<bool> filter) async {
+    final c = countAll();
+    final row =
+        await (selectOnly(cards)..addColumns([c])..where(filter)).getSingle();
+    return row.read(c) ?? 0;
+  }
+
+  /// Aggregate study stats for the progress view.
+  Future<DeckStats> deckStats() async {
+    final now = DateTime.now();
+    final base = cards.isCard.equals(true);
+    final total = await _count(base);
+    final learned = await _count(base & cards.repetitions.isBiggerThanValue(0));
+    final difficult = await _count(base & cards.lapses.isBiggerThanValue(0));
+    final dueToday = await _count(base &
+        cards.suspended.equals(false) &
+        (cards.dueDate.isSmallerOrEqualValue(now) | cards.dueDate.isNull()));
+    return DeckStats(
+        total: total,
+        learned: learned,
+        difficult: difficult,
+        dueToday: dueToday);
   }
 
   // ---------------------------------------------------------------------------

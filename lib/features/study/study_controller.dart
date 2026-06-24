@@ -1,8 +1,40 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/database.dart';
 import '../../services/srs/srs_scheduler.dart';
+
+String _ymd(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Records a study day and returns the current streak. Increments when studying
+/// on a consecutive day, resets to 1 after a gap.
+Future<int> recordStudyStreak() async {
+  final p = await SharedPreferences.getInstance();
+  final now = DateTime.now();
+  final today = _ymd(now);
+  final last = p.getString('streak_last');
+  var streak = p.getInt('streak_count') ?? 0;
+  if (last == today) return streak;
+  final yesterday = _ymd(now.subtract(const Duration(days: 1)));
+  streak = (last == yesterday) ? streak + 1 : 1;
+  await p.setInt('streak_count', streak);
+  await p.setString('streak_last', today);
+  return streak;
+}
+
+/// Reads the current streak, treating a gap of more than a day as broken.
+Future<int> readStudyStreak() async {
+  final p = await SharedPreferences.getInstance();
+  final last = p.getString('streak_last');
+  if (last == null) return 0;
+  final now = DateTime.now();
+  if (last == _ymd(now) || last == _ymd(now.subtract(const Duration(days: 1)))) {
+    return p.getInt('streak_count') ?? 0;
+  }
+  return 0;
+}
 
 /// Which side of the card is shown on the front (what you recall).
 enum StudyDirection { both, englishToPolish, polishToEnglish }
@@ -71,6 +103,8 @@ class StudyController extends ChangeNotifier {
         updatedAt: Value(now),
       ),
     );
+
+    recordStudyStreak(); // best-effort, fire-and-forget
 
     // Snapshot for undo (the state *before* this grade).
     _undoSnapshot = c;

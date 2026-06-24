@@ -7,9 +7,11 @@ import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../data/seed.dart';
 import '../../services/import_export/csv_import.dart';
+import '../../services/import_export/download.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
+import '../stats/stats_screen.dart';
 
 class DictionaryScreen extends StatefulWidget {
   final VoidCallback onStudyTap;
@@ -688,11 +690,25 @@ class _ManageMenu extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const CatalogueScreen()),
           );
         }
+        if (v == 'stats') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const StatsScreen()),
+          );
+        }
         if (v == 'import') _importCsv(context);
+        if (v == 'template') _downloadTemplate(context);
         if (v == 'reset') _confirmReset(context);
         if (v == 'clear') _confirmClear(context);
       },
       itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'stats',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.bar_chart_rounded),
+            title: Text('Statistics'),
+          ),
+        ),
         PopupMenuItem(
           value: 'categories',
           child: ListTile(
@@ -707,6 +723,14 @@ class _ManageMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.upload_file_outlined),
             title: Text('Import from CSV'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'template',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.download_outlined),
+            title: Text('Download CSV template'),
           ),
         ),
         PopupMenuItem(
@@ -742,8 +766,49 @@ class _ManageMenu extends StatelessWidget {
   }
 
   Future<void> _confirmClear(BuildContext context) async {
-    final ok = await _confirm(context, 'Delete all entries?',
-        'This permanently removes every entry. This cannot be undone.');
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final canDelete = ctrl.text.trim().toUpperCase() == 'DELETE';
+          return AlertDialog(
+            title: const Text('Delete ALL entries?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'This permanently removes every entry and cannot be undone.\n\n'
+                    'Type DELETE to confirm:'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    hintText: 'DELETE',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setLocal(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB3261E)),
+                onPressed: canDelete ? () => Navigator.pop(ctx, true) : null,
+                child: const Text('Delete everything'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
     if (ok != true) return;
     await db.clearAllCards();
     if (context.mounted) {
@@ -769,6 +834,20 @@ class _ManageMenu extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _downloadTemplate(BuildContext context) {
+    const template =
+        'question,answer,question example,answer example,question hint,answer hint\n'
+        'book,książka,I am reading a book.,Czytam książkę.,a set of printed pages bound together,\n'
+        'airport,lotnisko,Our flight leaves from the airport.,,a place where aircraft take off and land,\n';
+    try {
+      downloadText('lingua-import-template.csv', template);
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download is only available on the web app')),
+      );
+    }
   }
 
   Future<void> _importCsv(BuildContext context) async {
