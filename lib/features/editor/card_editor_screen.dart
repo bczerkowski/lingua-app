@@ -38,9 +38,9 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   final WordAssistService _assist = WordAssistService();
   String? _busyAction; // which assist button is currently running
 
-  // Additional meanings beyond the primary one (Polish/Definition/Example
-  // above). Each is its own block the user can add/remove.
-  final List<_MeaningDraft> _extra = [];
+  // Additional Polish translations for the same term (the example/definition
+  // stay shared). Each is its own removable field.
+  final List<TextEditingController> _extraPolish = [];
 
   bool get _isNew => widget.cardId == null;
 
@@ -74,17 +74,16 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _imageBytes = c.imageBytes;
       _imageSource = c.imageSource;
     });
-    // Additional meanings are best-effort; a failure here must not blank the card.
+    // Additional Polish translations are best-effort; a failure here must not
+    // blank the card.
     try {
       final extra = await db.meaningsFor(widget.cardId!);
       if (!mounted) return;
       setState(() {
         for (final m in extra) {
-          _extra.add(_MeaningDraft(
-            polish: m.polishTranslation,
-            definition: m.englishDefinition ?? '',
-            example: m.exampleSentence ?? '',
-          ));
+          if (m.polishTranslation.trim().isNotEmpty) {
+            _extraPolish.add(TextEditingController(text: m.polishTranslation));
+          }
         }
       });
     } catch (_) {/* ignore — primary fields already loaded */}
@@ -95,8 +94,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     for (final c in [_polish, _english, _example, _definition]) {
       c.dispose();
     }
-    for (final m in _extra) {
-      m.dispose();
+    for (final c in _extraPolish) {
+      c.dispose();
     }
     super.dispose();
   }
@@ -122,14 +121,19 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             _field(_english, 'English term', required: true),
-            if (_extra.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 4, bottom: 4),
-                child: Text('Meaning 1',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: AppTheme.muted)),
-              ),
             _field(_polish, 'Polish term', required: true),
+            // Additional Polish translations for the same word (e.g. a verb and
+            // an adjective sense). Example/definition below stay shared.
+            for (var i = 0; i < _extraPolish.length; i++) _extraPolishField(i),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add Polish meaning'),
+                onPressed: () =>
+                    setState(() => _extraPolish.add(TextEditingController())),
+              ),
+            ),
             _assistRow('Suggest Polish meaning', Icons.translate, 'pl',
                 _suggestPolish),
             _field(_example, 'Example sentence', maxLines: 2),
@@ -138,16 +142,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             _field(_definition, 'English definition', maxLines: 2),
             _assistRow('Generate definition', Icons.auto_awesome, 'def',
                 _genDefinition),
-            // Additional meanings (one-to-many) — add as many as needed.
-            for (var i = 0; i < _extra.length; i++) _meaningBlock(i),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add meaning'),
-                onPressed: () => setState(() => _extra.add(_MeaningDraft())),
-              ),
-            ),
             const SizedBox(height: 12),
             _TagInput(
               // Re-seed the chip editor once the card's tags have loaded.
@@ -201,35 +195,25 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     );
   }
 
-  Widget _meaningBlock(int i) {
-    final m = _extra[i];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
+  Widget _extraPolishField(int i) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text('Meaning ${i + 2}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, color: AppTheme.muted)),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.close, size: 20),
-                tooltip: 'Remove meaning',
-                onPressed: () => setState(() {
-                  _extra.removeAt(i).dispose();
-                }),
+          Expanded(
+            child: TextField(
+              controller: _extraPolish[i],
+              decoration: InputDecoration(
+                labelText: 'Polish meaning ${i + 2}',
+                border: const OutlineInputBorder(),
               ),
-            ],
+            ),
           ),
-          _field(m.polish, 'Polish translation'),
-          _field(m.definition, 'English definition', maxLines: 2),
-          _field(m.example, 'Example sentence', maxLines: 2),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            tooltip: 'Remove',
+            onPressed: () => setState(() => _extraPolish.removeAt(i).dispose()),
+          ),
         ],
       ),
     );
@@ -574,16 +558,12 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         updatedAt: Value(now),
       ));
     }
-    // Persist the additional meanings (one-to-many).
+    // Persist the additional Polish translations.
     await db.replaceMeanings(
       cardId,
       [
-        for (final m in _extra)
-          (
-            polish: m.polish.text,
-            definition: _nullIfEmpty(m.definition.text),
-            example: _nullIfEmpty(m.example.text),
-          ),
+        for (final c in _extraPolish)
+          (polish: c.text, definition: null, example: null),
       ],
     );
     if (mounted) Navigator.of(context).pop(true);
@@ -780,22 +760,5 @@ class _TagInputState extends State<_TagInput> {
         ],
       ),
     );
-  }
-}
-
-/// Holds the editable fields for one additional meaning.
-class _MeaningDraft {
-  final TextEditingController polish;
-  final TextEditingController definition;
-  final TextEditingController example;
-  _MeaningDraft({String polish = '', String definition = '', String example = ''})
-      : polish = TextEditingController(text: polish),
-        definition = TextEditingController(text: definition),
-        example = TextEditingController(text: example);
-
-  void dispose() {
-    polish.dispose();
-    definition.dispose();
-    example.dispose();
   }
 }
