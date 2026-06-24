@@ -9,6 +9,7 @@ import 'study_controller.dart';
 /// A single flashcard whose reveal state is controlled by the parent.
 class FlashcardView extends StatefulWidget {
   final Flashcard card;
+  final List<Meaning> extraMeanings;
   final StudyDirection direction;
   final bool revealed;
   final VoidCallback onReveal;
@@ -16,6 +17,7 @@ class FlashcardView extends StatefulWidget {
   const FlashcardView({
     super.key,
     required this.card,
+    this.extraMeanings = const [],
     required this.direction,
     required this.revealed,
     required this.onReveal,
@@ -70,7 +72,10 @@ class _FlashcardViewState extends State<FlashcardView>
                     alignment: Alignment.center,
                     transform: Matrix4.identity()..rotateY(math.pi),
                     child: _CardFace(
-                        child: _Back(card: widget.card, onSpeak: widget.onSpeak)),
+                        child: _Back(
+                            card: widget.card,
+                            extraMeanings: widget.extraMeanings,
+                            onSpeak: widget.onSpeak)),
                   )
                 : _CardFace(
                     child: _Front(
@@ -267,11 +272,27 @@ class _Front extends StatelessWidget {
 
 class _Back extends StatelessWidget {
   final Flashcard card;
+  final List<Meaning> extraMeanings;
   final void Function(String, String) onSpeak;
-  const _Back({required this.card, required this.onSpeak});
+  const _Back(
+      {required this.card,
+      required this.extraMeanings,
+      required this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
+    // Primary meaning (on the card) + any additional meanings.
+    final all = <({String polish, String? def, String? ex})>[
+      (polish: card.polish, def: card.englishDefinition, ex: card.exampleSentence),
+      for (final m in extraMeanings)
+        (
+          polish: m.polishTranslation,
+          def: m.englishDefinition,
+          ex: m.exampleSentence
+        ),
+    ];
+    final multi = all.length > 1;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -280,29 +301,74 @@ class _Back extends StatelessWidget {
         const SizedBox(height: 14),
         _TargetLine(card: card, onSpeak: onSpeak),
         const Divider(height: 26),
-        if (card.exampleSentence != null) ...[
+        for (var i = 0; i < all.length; i++) ...[
+          _MeaningBody(
+            number: multi ? i + 1 : null,
+            polish: multi ? all[i].polish : null,
+            definition: all[i].def,
+            example: all[i].ex,
+            onSpeak: onSpeak,
+          ),
+          if (i != all.length - 1) const SizedBox(height: 14),
+        ],
+        const SizedBox(height: 18),
+        _ImageAnchor(card: card),
+      ],
+    );
+  }
+}
+
+/// One meaning's body on the back of the card. When [number] is non-null the
+/// card has several meanings, so each is numbered and shows its translation.
+class _MeaningBody extends StatelessWidget {
+  final int? number;
+  final String? polish;
+  final String? definition;
+  final String? example;
+  final void Function(String, String) onSpeak;
+  const _MeaningBody({
+    required this.number,
+    required this.polish,
+    required this.definition,
+    required this.example,
+    required this.onSpeak,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (number != null && polish != null && polish!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('$number.  $polish',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black)),
+          ),
+        if (example != null && example!.isNotEmpty) ...[
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text('“${card.exampleSentence}”',
+                child: Text('“$example”',
                     style: const TextStyle(
                         fontStyle: FontStyle.italic, fontSize: 16, height: 1.4)),
               ),
               IconButton(
                 icon: const Icon(Icons.volume_up, size: 18),
                 tooltip: 'Hear sentence',
-                onPressed: () => onSpeak(card.exampleSentence!, 'en-US'),
+                onPressed: () => onSpeak(example!, 'en-US'),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
         ],
-        if (card.englishDefinition != null)
-          Text(card.englishDefinition!,
+        if (definition != null && definition!.isNotEmpty)
+          Text(definition!,
               style: const TextStyle(fontSize: 15, color: Colors.black)),
-        const SizedBox(height: 18),
-        _ImageAnchor(card: card),
       ],
     );
   }

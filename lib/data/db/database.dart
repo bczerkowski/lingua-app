@@ -19,7 +19,7 @@ class DeckStats {
   });
 }
 
-@DriftDatabase(tables: [Catalogues, Cards])
+@DriftDatabase(tables: [Catalogues, Cards, Meanings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
 
@@ -27,7 +27,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -36,14 +36,23 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.addColumn(cards, cards.gender);
           }
+          if (from < 3) {
+            await m.createTable(meanings);
+          }
         },
         beforeOpen: (details) async {
-          // Defensive: guarantee the `gender` column exists even if a prior
-          // migration left the (web) database in an inconsistent state.
+          // Defensive: guarantee the `gender` column and the `meanings` table
+          // exist even if a prior migration left the (web) DB inconsistent.
           final cols = await customSelect("PRAGMA table_info('cards')").get();
           final hasGender = cols.any((r) => r.read<String>('name') == 'gender');
           if (!hasGender) {
             await customStatement('ALTER TABLE cards ADD COLUMN gender TEXT');
+          }
+          final tbls = await customSelect(
+                  "SELECT name FROM sqlite_master WHERE type='table' AND name='meanings'")
+              .get();
+          if (tbls.isEmpty) {
+            await createMigrator().createTable(meanings);
           }
         },
       );
@@ -226,4 +235,37 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Flashcard?> getCard(int id) =>
       (select(cards)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  // ---------------------------------------------------------------------------
+  // Meanings (additional, beyond the primary meaning stored on the card)
+  // ---------------------------------------------------------------------------
+  Future<List<Meaning>> meaningsFor(int cardId) =>
+      (select(meanings)
+            ..where((m) => m.cardId.equals(cardId))
+            ..orderBy([(m) => OrderingTerm(expression: m.sortOrder)]))
+          .get();
+
+  /// Replace all additional meanings for a card with [items] (each is a
+  /// {polish, definition, example} record). Empty entries are skipped.
+  Future<void> replaceMeanings(
+      int cardId, List<({String polish, String? definition, String? example})> items) async {
+    await transaction(() async {
+      await (delete(meanings)..where((m) => m.cardId.equals(cardId))).go();
+      var order = 0;
+      for (final it in items) {
+        if (it.polish.trim().isEmpty &&
+            (it.definition?.trim().isEmpty ?? true) &&
+            (it.example?.trim().isEmpty ?? true)) {
+          continue;
+        }
+        await into(meanings).insert(MeaningsCompanion.insert(
+          cardId: cardId,
+          polishTranslation: Value(it.polish.trim()),
+          englishDefinition: Value(it.definition?.trim()),
+          exampleSentence: Value(it.example?.trim()),
+          sortOrder: Value(order++),
+        ));
+      }
+    });
+  }
 }

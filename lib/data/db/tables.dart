@@ -51,3 +51,15 @@ class Cards extends Table {
   DateTimeColumn get dueDate => dateTime().nullable()();
   BoolColumn get suspended => boolean().withDefault(const Constant(false))();
 }
+
+/// Additional meanings for a card, beyond the primary one stored inline on
+/// [Cards]. A term can have any number of these (a one-to-many relationship).
+class Meanings extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get cardId =>
+      integer().references(Cards, #id, onDelete: KeyAction.cascade)();
+  TextColumn get polishTranslation => text().withDefault(const Constant(''))();
+  TextColumn get englishDefinition => text().nullable()();
+  TextColumn get exampleSentence => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+}
