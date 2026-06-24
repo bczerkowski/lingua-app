@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
@@ -74,7 +73,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final db = AppServices.of(context).db;
-    final scaffold = Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text(_isNew ? 'New entry' : 'Edit card'),
         actions: [
@@ -119,20 +118,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           ],
         ),
       ),
-    );
-
-    // Ctrl+V (Windows/Linux) or Cmd+V (macOS) pastes a clipboard image into the
-    // visual anchor — but only when a text field doesn't already own focus
-    // (text fields handle their own paste). Focus(autofocus) makes the shortcut
-    // active as soon as the editor opens.
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-            _pasteScreenshot,
-        const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-            _pasteScreenshot,
-      },
-      child: Focus(autofocus: true, child: scaffold),
     );
   }
 
