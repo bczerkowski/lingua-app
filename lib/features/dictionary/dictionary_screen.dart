@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
@@ -21,7 +22,27 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   bool _selectMode = false;
   bool _alphabetical = false;
   bool _groupByCategory = false;
+  int? _filterCatId;
   final Set<int> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore the user's view preferences from the last session.
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _alphabetical = p.getBool('pref_alpha') ?? false;
+        _groupByCategory = p.getBool('pref_group') ?? false;
+      });
+    });
+  }
+
+  Future<void> _savePrefs() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('pref_alpha', _alphabetical);
+    await p.setBool('pref_group', _groupByCategory);
+  }
 
   void _enterSelect([int? first]) {
     setState(() {
@@ -159,33 +180,50 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                           style: TextStyle(fontSize: 16, color: AppTheme.muted)),
                     );
                   }
+                  final filtered = _filterCatId == null
+                      ? items
+                      : items
+                          .where((c) => c.catalogueId == _filterCatId)
+                          .toList();
                   return Column(
                     children: [
                       _ActionBar(
                         selectMode: _selectMode,
                         selectedCount: _selected.length,
-                        totalCount: items.length,
-                        allSelected: _selected.length == items.length,
+                        totalCount: filtered.length,
+                        allSelected: filtered.isNotEmpty &&
+                            _selected.length == filtered.length,
                         alphabetical: _alphabetical,
                         groupByCategory: _groupByCategory,
-                        onToggleSort: () =>
-                            setState(() => _alphabetical = !_alphabetical),
-                        onToggleGroup: () => setState(
-                            () => _groupByCategory = !_groupByCategory),
+                        onToggleSort: () {
+                          setState(() => _alphabetical = !_alphabetical);
+                          _savePrefs();
+                        },
+                        onToggleGroup: () {
+                          setState(
+                              () => _groupByCategory = !_groupByCategory);
+                          _savePrefs();
+                        },
                         onEnterSelect: () => _enterSelect(),
                         onCancel: _exitSelect,
                         onToggleAll: () => setState(() {
-                          if (_selected.length == items.length) {
+                          if (_selected.length == filtered.length) {
                             _selected.clear();
                             _selectMode = false;
                           } else {
                             _selected
                               ..clear()
-                              ..addAll(items.map((e) => e.id));
+                              ..addAll(filtered.map((e) => e.id));
                           }
                         }),
                         onDelete: () => _deleteSelected(db),
                       ),
+                      if (!_selectMode)
+                        _CategoryFilterBar(
+                          db: db,
+                          selectedId: _filterCatId,
+                          onSelect: (id) => setState(() => _filterCatId = id),
+                        ),
                       Expanded(
                         child: StreamBuilder<List<Catalogue>>(
                           stream: db.watchCatalogues(),
@@ -195,7 +233,14 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                                   in (catSnap.data ?? const <Catalogue>[]))
                                 c.id: c.name
                             };
-                            final rows = _buildRows(items, names);
+                            if (filtered.isEmpty) {
+                              return Center(
+                                child: Text('No entries in this category.',
+                                    style: TextStyle(
+                                        fontSize: 16, color: AppTheme.muted)),
+                              );
+                            }
+                            final rows = _buildRows(filtered, names);
                             return ListView.builder(
                               padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
                               itemCount: rows.length,
@@ -347,6 +392,58 @@ class _ActionBar extends StatelessWidget {
             label: const Text('Delete'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Horizontal "All / category" chips to filter the list by category.
+/// Hidden when the user has no categories yet.
+class _CategoryFilterBar extends StatelessWidget {
+  final AppDatabase db;
+  final int? selectedId;
+  final ValueChanged<int?> onSelect;
+  const _CategoryFilterBar(
+      {required this.db, required this.selectedId, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Catalogue>>(
+      stream: db.watchCatalogues(),
+      builder: (context, snap) {
+        final cats = snap.data ?? const <Catalogue>[];
+        if (cats.isEmpty) return const SizedBox.shrink();
+        return SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            children: [
+              _pill('All', selectedId == null, () => onSelect(null)),
+              for (final c in cats)
+                _pill(c.name, selectedId == c.id, () => onSelect(c.id)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pill(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        showCheckmark: false,
+        labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppTheme.ink),
+        selectedColor: AppTheme.coral,
+        backgroundColor: AppTheme.surface,
+        side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
       ),
     );
   }
