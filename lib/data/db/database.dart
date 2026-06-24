@@ -120,6 +120,17 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteCard(int id) =>
       (delete(cards)..where((t) => t.id.equals(id))).go();
 
+  /// Delete every card (keeps catalogues, so the deck is not auto-reseeded).
+  Future<int> clearAllCards() => delete(cards).go();
+
+  /// Wipe everything (cards + catalogues) — used by "Reset to sample deck".
+  Future<void> wipeAll() async {
+    await transaction(() async {
+      await delete(cards).go();
+      await delete(catalogues).go();
+    });
+  }
+
   /// Fetch full rows for the given ids (used to snapshot before a bulk delete).
   Future<List<Flashcard>> getCards(List<int> ids) {
     if (ids.isEmpty) return Future.value(const []);

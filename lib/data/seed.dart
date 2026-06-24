@@ -10,6 +10,12 @@ class Seeder {
   final AppDatabase db;
   Seeder(this.db);
 
+  /// Wipes all data and re-seeds the sample deck (for the in-app reset).
+  Future<void> reset() async {
+    await db.wipeAll();
+    await seedIfNeeded();
+  }
+
   /// Seeds once, then never again. We use the presence of catalogues — which
   /// persist even after every card is deleted — as the "already initialized"
   /// marker, so the user's deletions are never undone by a re-seed.

@@ -9,6 +9,31 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Friendly fallback instead of a red/blank screen if a widget ever throws.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Container(
+      color: const Color(0xFFF0EEE6),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(28),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.refresh, size: 40, color: Color(0xFF73706A)),
+            const SizedBox(height: 12),
+            Text(
+              'Something went wrong on this screen.\nPlease reload the app.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16, color: Colors.black.withValues(alpha: 0.7)),
+            ),
+          ],
+        ),
+      ),
+    );
+  };
+
   final db = AppDatabase();
   // Seed in the background so a slow/failed DB open never blocks first paint.
   final seeded = Seeder(db).seedIfNeeded();

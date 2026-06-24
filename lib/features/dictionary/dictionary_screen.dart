@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
+import '../../data/seed.dart';
 import '../../theme.dart';
 import '../editor/card_editor_screen.dart';
 
@@ -462,6 +463,84 @@ class _EntryRow extends StatelessWidget {
   }
 }
 
+/// Overflow menu with self-service data recovery actions.
+class _ManageMenu extends StatelessWidget {
+  final AppDatabase db;
+  const _ManageMenu({required this.db});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, color: AppTheme.muted),
+      tooltip: 'Manage data',
+      onSelected: (v) {
+        if (v == 'reset') _confirmReset(context);
+        if (v == 'clear') _confirmClear(context);
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'reset',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.restart_alt),
+            title: Text('Reset to sample deck'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'clear',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_sweep_outlined),
+            title: Text('Delete all entries'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmReset(BuildContext context) async {
+    final ok = await _confirm(context, 'Reset to sample deck?',
+        'This removes your current entries and restores the original sample deck.');
+    if (ok != true) return;
+    await Seeder(db).reset();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Restored the sample deck')),
+      );
+    }
+  }
+
+  Future<void> _confirmClear(BuildContext context) async {
+    final ok = await _confirm(context, 'Delete all entries?',
+        'This permanently removes every entry. This cannot be undone.');
+    if (ok != true) return;
+    await db.clearAllCards();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All entries deleted')),
+      );
+    }
+  }
+
+  Future<bool?> _confirm(BuildContext context, String title, String body) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+  }
+}
+
 /// Eyebrow label, serif title, and a live "cards due — study now" link.
 class _Header extends StatelessWidget {
   final AppDatabase db;
@@ -475,13 +554,19 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('SŁOWNIK · DICTIONARY',
-              style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.8,
-                  color: AppTheme.muted)),
-          const SizedBox(height: 2),
+          Row(
+            children: [
+              Expanded(
+                child: Text('SŁOWNIK · DICTIONARY',
+                    style: GoogleFonts.inter(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.8,
+                        color: AppTheme.muted)),
+              ),
+              _ManageMenu(db: db),
+            ],
+          ),
           Text('Lexicon',
               style: GoogleFonts.sourceSerif4(
                   fontSize: 38,
