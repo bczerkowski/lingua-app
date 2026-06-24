@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -20,10 +21,9 @@ abstract class ImageGenProvider {
   Future<ImageGenResult> generate(String targetWord, String exampleSentence);
 }
 
-/// Talks to YOUR backend proxy (which holds the OpenAI key — never ship the key
-/// in the client). The proxy is expected to return raw PNG bytes.
-///
-/// See `server/imageRoute.js` in the project README for the matching endpoint.
+/// Talks to YOUR backend proxy (which holds the API key — never ship the key in
+/// the client). Posts `{ "prompt": ... }` and expects `{ "base64": "..." }`,
+/// matching the Gemini/Imagen proxy in `server/gemini_proxy_server.js`.
 class ProxyImageGenProvider implements ImageGenProvider {
   final Dio _dio;
   final String endpoint;
@@ -31,25 +31,34 @@ class ProxyImageGenProvider implements ImageGenProvider {
   ProxyImageGenProvider(this._dio, {required this.endpoint});
 
   @override
-  Future<ImageGenResult> generate(String targetWord, String exampleSentence) async {
+  Future<ImageGenResult> generate(
+      String targetWord, String exampleSentence) async {
     try {
       final prompt = PromptBuilder.image(targetWord, exampleSentence);
-      final res = await _dio.post<List<int>>(
+      final res = await _dio.post(
         endpoint,
-        data: {'prompt': prompt, 'size': '1024x1024'},
+        data: {'prompt': prompt},
         options: Options(
-          responseType: ResponseType.bytes,
+          responseType: ResponseType.json,
           sendTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 90),
         ),
       );
       final data = res.data;
-      if (data == null || data.isEmpty) {
-        return const ImageGenResult.failure('Empty response from image service');
+      final b64 = data is Map ? data['base64'] : null;
+      if (b64 is String && b64.isNotEmpty) {
+        return ImageGenResult.success(base64Decode(b64));
       }
-      return ImageGenResult.success(Uint8List.fromList(data));
+      final err = data is Map ? data['error'] : null;
+      return ImageGenResult.failure(
+          err is String ? err : 'No image returned by the proxy');
     } on DioException catch (e) {
-      return ImageGenResult.failure('Network/API error: ${e.message}');
+      // Try to surface the proxy's error message if present.
+      final body = e.response?.data;
+      final msg = body is Map && body['error'] is String
+          ? body['error'] as String
+          : e.message;
+      return ImageGenResult.failure('Network/API error: $msg');
     } catch (e) {
       return ImageGenResult.failure(e.toString());
     }

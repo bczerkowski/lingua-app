@@ -4,7 +4,30 @@ A tiny Express service that generates card illustrations with OpenAI and returns
 **raw PNG bytes**. It keeps your `OPENAI_API_KEY` server-side so it never ships
 in the Flutter client.
 
-## Run locally
+## Gemini (Imagen 3) image proxy
+
+`gemini_proxy_server.js` generates flashcard images with Google Imagen 3.
+
+```bash
+cd server
+cp .env.example .env        # put GEMINI_API_KEY=AIza... (from aistudio.google.com/apikey)
+npm install
+npm run gemini              # http://localhost:3000  (POST /api/generate-image)
+```
+
+Then run the app pointed at it:
+
+```bash
+flutter run -d chrome \
+  --dart-define=IMAGE_BACKEND=http://localhost:3000/api/generate-image
+```
+
+The app POSTs `{ "prompt": ... }` and the proxy returns `{ "base64": ... }`,
+which the client decodes into the card image. The public GitHub Pages build
+can't reach `localhost` — to use Imagen on the hosted app you'd deploy this
+proxy over HTTPS and build with that URL.
+
+## OpenAI image proxy — run locally
 
 ```bash
 cd server
