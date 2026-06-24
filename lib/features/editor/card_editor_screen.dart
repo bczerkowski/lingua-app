@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
+import '../../services/assist/word_assist_service.dart';
 import '../../services/media/image_import_service.dart';
 import '../../theme.dart';
 
@@ -34,6 +35,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   bool _generating = false;
   bool _loaded = false;
   final ImageImportService _importer = ImageImportService();
+  final WordAssistService _assist = WordAssistService();
+  String? _busyAction; // which assist button is currently running
 
   bool get _isNew => widget.cardId == null;
 
@@ -95,16 +98,24 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _field(_polish, 'Polish term', required: true),
             _field(_english, 'English term', required: true),
+            _field(_polish, 'Polish term', required: true),
+            _assistRow('Suggest Polish meaning', Icons.translate, 'pl',
+                _suggestPolish),
             _field(_example, 'Example sentence', maxLines: 2),
+            _assistRow('Generate example sentence', Icons.auto_awesome, 'ex',
+                _genExample),
             _field(_definition, 'English definition', maxLines: 2),
+            _assistRow('Generate definition', Icons.auto_awesome, 'def',
+                _genDefinition),
             _TagInput(
               // Re-seed the chip editor once the card's tags have loaded.
               key: ValueKey('tags_${_tagList.join('|')}'),
               initial: _tagList,
               onChanged: (t) => _tagList = t,
             ),
+            _assistRow('Suggest tags', Icons.sell_outlined, 'tags',
+                _suggestTags),
             const SizedBox(height: 12),
             _CatalogueDropdown(
               db: db,
@@ -113,7 +124,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Include in study deck'),
+              title: const Text('Study this card'),
               value: _isCard,
               onChanged: (v) => setState(() => _isCard = v),
             ),
@@ -147,6 +158,100 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             : null,
       ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Small, optional "assist" helpers (free dictionary/translation APIs)
+  // ---------------------------------------------------------------------------
+  Widget _assistRow(
+      String label, IconData icon, String key, Future<void> Function() run) {
+    final busy = _busyAction == key;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          icon: busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Icon(icon, size: 16),
+          label: Text(label, style: const TextStyle(fontSize: 12.5)),
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.coralDark,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          ),
+          onPressed: _busyAction != null ? null : () => _runAssist(key, run),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runAssist(String key, Future<void> Function() run) async {
+    setState(() => _busyAction = key);
+    try {
+      await run();
+    } finally {
+      if (mounted) setState(() => _busyAction = null);
+    }
+  }
+
+  bool _needEnglish() {
+    if (_english.text.trim().isEmpty) {
+      _toast('Enter the English term first');
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _suggestPolish() async {
+    if (!_needEnglish()) return;
+    final pl = await _assist.translateToPolish(_english.text.trim());
+    if (!mounted) return;
+    if (pl != null) {
+      _polish.text = pl;
+    } else {
+      _toast('Could not fetch a translation');
+    }
+  }
+
+  Future<void> _genExample() async {
+    if (!_needEnglish()) return;
+    final d = await _assist.lookup(_english.text.trim());
+    if (!mounted) return;
+    if (d?.example != null) {
+      _example.text = d!.example!;
+    } else {
+      _toast('No example found for “${_english.text.trim()}”');
+    }
+  }
+
+  Future<void> _genDefinition() async {
+    if (!_needEnglish()) return;
+    final d = await _assist.lookup(_english.text.trim());
+    if (!mounted) return;
+    if (d?.definition != null) {
+      _definition.text = d!.definition!;
+    } else {
+      _toast('No definition found for “${_english.text.trim()}”');
+    }
+  }
+
+  Future<void> _suggestTags() async {
+    if (!_needEnglish()) return;
+    final d = await _assist.lookup(_english.text.trim());
+    if (!mounted) return;
+    if (d != null && d.partsOfSpeech.isNotEmpty) {
+      setState(() {
+        for (final p in d.partsOfSpeech) {
+          if (!_tagList.contains(p)) _tagList.add(p);
+        }
+      });
+    } else {
+      _toast('No tag suggestions found');
+    }
   }
 
   // ---------------------------------------------------------------------------
