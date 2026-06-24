@@ -20,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _index,
         children: [
           DictionaryScreen(onStudyTap: () => setState(() => _index = 1)),
-          const StudyScreen(),
+          StudyScreen(active: _index == 1),
         ],
       ),
       bottomNavigationBar: NavigationBar(

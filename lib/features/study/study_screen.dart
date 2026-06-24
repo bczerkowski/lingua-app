@@ -11,7 +11,9 @@ import 'study_controller.dart';
 String _plural(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
 
 class StudyScreen extends StatefulWidget {
-  const StudyScreen({super.key});
+  /// True when the Study tab is the visible tab.
+  final bool active;
+  const StudyScreen({super.key, required this.active});
 
   @override
   State<StudyScreen> createState() => _StudyScreenState();
@@ -38,7 +40,19 @@ class _StudyScreenState extends State<StudyScreen> {
     super.didChangeDependencies();
     if (_ctrl == null) {
       final s = AppServices.of(context);
-      _ctrl = StudyController(s.db, s.srs)..load();
+      _ctrl = StudyController(s.db, s.srs);
+      if (widget.active) _ctrl!.load();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant StudyScreen old) {
+    super.didUpdateWidget(old);
+    // Reload the due queue each time the Study tab becomes visible, so newly
+    // imported/edited/deleted cards are reflected (and stale ones drop out).
+    if (widget.active && !old.active) {
+      setState(() => _revealed = false);
+      _ctrl?.load();
     }
   }
 
