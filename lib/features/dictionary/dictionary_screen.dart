@@ -5,6 +5,7 @@ import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../data/seed.dart';
 import '../../theme.dart';
+import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
 
 class DictionaryScreen extends StatefulWidget {
@@ -474,10 +475,23 @@ class _ManageMenu extends StatelessWidget {
       icon: const Icon(Icons.more_vert, color: AppTheme.muted),
       tooltip: 'Manage data',
       onSelected: (v) {
+        if (v == 'categories') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const CatalogueScreen()),
+          );
+        }
         if (v == 'reset') _confirmReset(context);
         if (v == 'clear') _confirmClear(context);
       },
       itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'categories',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.folder_outlined),
+            title: Text('Manage categories'),
+          ),
+        ),
         PopupMenuItem(
           value: 'reset',
           child: ListTile(

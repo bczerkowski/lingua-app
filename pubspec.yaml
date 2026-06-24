@@ -14,6 +14,9 @@ dependencies:
   # Modern typeface (Inter) for the app's type system.
   google_fonts: ^6.2.1
 
+  # Persistent first-run flags (seed-once, one-time cleanup).
+  shared_preferences: ^2.3.2
+
   # Local-first database (SQLite, type-safe).
   drift: ^2.20.0
   sqlite3_flutter_libs: ^0.5.24

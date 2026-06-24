@@ -42,6 +42,39 @@ class AppDatabase extends _$AppDatabase {
   Future<int> createCatalogue(String name, {String? color}) => into(catalogues)
       .insert(CataloguesCompanion.insert(name: name, color: Value(color)));
 
+  Future<void> renameCatalogue(int id, String name) =>
+      (update(catalogues)..where((t) => t.id.equals(id)))
+          .write(CataloguesCompanion(name: Value(name.trim())));
+
+  /// Delete a catalogue; any cards pointing at it become uncategorized.
+  Future<void> deleteCatalogue(int id) async {
+    await transaction(() async {
+      await (update(cards)..where((t) => t.catalogueId.equals(id)))
+          .write(const CardsCompanion(catalogueId: Value(null)));
+      await (delete(catalogues)..where((t) => t.id.equals(id))).go();
+    });
+  }
+
+  /// Remove every catalogue and uncategorize all cards.
+  Future<void> deleteAllCatalogues() async {
+    await transaction(() async {
+      await update(cards).write(const CardsCompanion(catalogueId: Value(null)));
+      await delete(catalogues).go();
+    });
+  }
+
+  /// How many cards are filed under each catalogue (for the manage screen).
+  Stream<Map<int, int>> watchCatalogueCounts() {
+    final count = cards.id.count();
+    final q = selectOnly(cards)
+      ..addColumns([cards.catalogueId, count])
+      ..where(cards.catalogueId.isNotNull())
+      ..groupBy([cards.catalogueId]);
+    return q.map((r) => MapEntry(r.read(cards.catalogueId)!, r.read(count) ?? 0))
+        .watch()
+        .map((rows) => {for (final e in rows) e.key: e.value});
+  }
+
   // ---------------------------------------------------------------------------
   // Dictionary
   // ---------------------------------------------------------------------------
