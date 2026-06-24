@@ -60,3 +60,6 @@ server/.env
 
 # Compiled static server binary
 tool/serve.exe
+
+# Large local PowerPoint files (kept on disk, not in git)
+*.pptx
