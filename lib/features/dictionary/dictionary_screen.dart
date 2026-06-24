@@ -19,6 +19,8 @@ class DictionaryScreen extends StatefulWidget {
 class _DictionaryScreenState extends State<DictionaryScreen> {
   String _query = '';
   bool _selectMode = false;
+  bool _alphabetical = false;
+  bool _groupByCategory = false;
   final Set<int> _selected = {};
 
   void _enterSelect([int? first]) {
@@ -83,6 +85,37 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     _exitSelect();
   }
 
+  /// Produces a flat render list: section-header strings (when grouping) mixed
+  /// with [Flashcard]s, applying alphabetical sort (by English) when enabled.
+  List<Object> _buildRows(List<Flashcard> items, Map<int, String> names) {
+    int byEnglish(Flashcard a, Flashcard b) =>
+        a.english.toLowerCase().compareTo(b.english.toLowerCase());
+
+    final list = [...items];
+    if (_alphabetical) list.sort(byEnglish);
+    if (!_groupByCategory) return list;
+
+    final groups = <int?, List<Flashcard>>{};
+    for (final c in list) {
+      groups.putIfAbsent(c.catalogueId, () => []).add(c);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == null) return 1; // Uncategorized last
+        if (b == null) return -1;
+        return (names[a] ?? '')
+            .toLowerCase()
+            .compareTo((names[b] ?? '').toLowerCase());
+      });
+
+    final rows = <Object>[];
+    for (final k in keys) {
+      rows.add(k == null ? 'Uncategorized' : (names[k] ?? 'Category'));
+      rows.addAll(groups[k]!);
+    }
+    return rows;
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
@@ -133,6 +166,12 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         selectedCount: _selected.length,
                         totalCount: items.length,
                         allSelected: _selected.length == items.length,
+                        alphabetical: _alphabetical,
+                        groupByCategory: _groupByCategory,
+                        onToggleSort: () =>
+                            setState(() => _alphabetical = !_alphabetical),
+                        onToggleGroup: () => setState(
+                            () => _groupByCategory = !_groupByCategory),
                         onEnterSelect: () => _enterSelect(),
                         onCancel: _exitSelect,
                         onToggleAll: () => setState(() {
@@ -148,25 +187,38 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         onDelete: () => _deleteSelected(db),
                       ),
                       Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
-                          itemCount: items.length,
-                          itemBuilder: (context, i) {
-                            final card = items[i];
-                            return _EntryRow(
-                              card: card,
-                              services: services,
-                              db: db,
-                              selectMode: _selectMode,
-                              selected: _selected.contains(card.id),
-                              onTap: () {
-                                if (_selectMode) {
-                                  _toggle(card.id);
-                                } else {
-                                  _openEditor(context, card.id);
-                                }
+                        child: StreamBuilder<List<Catalogue>>(
+                          stream: db.watchCatalogues(),
+                          builder: (context, catSnap) {
+                            final names = <int, String>{
+                              for (final c
+                                  in (catSnap.data ?? const <Catalogue>[]))
+                                c.id: c.name
+                            };
+                            final rows = _buildRows(items, names);
+                            return ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
+                              itemCount: rows.length,
+                              itemBuilder: (context, i) {
+                                final row = rows[i];
+                                if (row is String) return _SectionHeader(row);
+                                final card = row as Flashcard;
+                                return _EntryRow(
+                                  card: card,
+                                  services: services,
+                                  db: db,
+                                  selectMode: _selectMode,
+                                  selected: _selected.contains(card.id),
+                                  onTap: () {
+                                    if (_selectMode) {
+                                      _toggle(card.id);
+                                    } else {
+                                      _openEditor(context, card.id);
+                                    }
+                                  },
+                                  onLongPress: () => _enterSelect(card.id),
+                                );
                               },
-                              onLongPress: () => _enterSelect(card.id),
                             );
                           },
                         ),
@@ -196,6 +248,10 @@ class _ActionBar extends StatelessWidget {
   final int selectedCount;
   final int totalCount;
   final bool allSelected;
+  final bool alphabetical;
+  final bool groupByCategory;
+  final VoidCallback onToggleSort;
+  final VoidCallback onToggleGroup;
   final VoidCallback onEnterSelect;
   final VoidCallback onCancel;
   final VoidCallback onToggleAll;
@@ -205,24 +261,52 @@ class _ActionBar extends StatelessWidget {
     required this.selectedCount,
     required this.totalCount,
     required this.allSelected,
+    required this.alphabetical,
+    required this.groupByCategory,
+    required this.onToggleSort,
+    required this.onToggleGroup,
     required this.onEnterSelect,
     required this.onCancel,
     required this.onToggleAll,
     required this.onDelete,
   });
 
+  Widget _chip(String label, IconData icon, bool selected, VoidCallback onTap) {
+    return FilterChip(
+      selected: selected,
+      onSelected: (_) => onTap(),
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      avatar: Icon(icon,
+          size: 16, color: selected ? Colors.white : AppTheme.ink),
+      label: Text(label),
+      labelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: selected ? Colors.white : AppTheme.ink),
+      backgroundColor: AppTheme.surface,
+      selectedColor: AppTheme.coral,
+      side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!selectMode) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 14, 4),
+        padding: const EdgeInsets.fromLTRB(20, 0, 10, 4),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            TextButton.icon(
+            _chip('A–Z', Icons.sort_by_alpha, alphabetical, onToggleSort),
+            const SizedBox(width: 8),
+            _chip('Group', Icons.folder_outlined, groupByCategory,
+                onToggleGroup),
+            const Spacer(),
+            IconButton(
               onPressed: onEnterSelect,
-              icon: const Icon(Icons.check_box_outlined, size: 20),
-              label: const Text('Select', style: TextStyle(fontSize: 15)),
+              icon: const Icon(Icons.checklist_rounded),
+              tooltip: 'Select',
             ),
           ],
         ),
@@ -262,6 +346,31 @@ class _ActionBar extends StatelessWidget {
             icon: const Icon(Icons.delete_outline, size: 20),
             label: const Text('Delete'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A category section header shown when grouping is enabled.
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 10, 0, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.folder_rounded, size: 16, color: AppTheme.coralDark),
+          const SizedBox(width: 7),
+          Text(title.toUpperCase(),
+              style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: AppTheme.coralDark)),
         ],
       ),
     );
@@ -361,19 +470,12 @@ class _EntryRow extends StatelessWidget {
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(card.polish,
+        // English is the headword (shown first), Polish is the translation.
+        Text(card.english,
             style: GoogleFonts.sourceSerif4(
                 fontSize: 21,
                 fontWeight: FontWeight.w600,
                 color: Colors.black)),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
-        ),
-        Text(card.english,
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
-        const SizedBox(width: 4),
         InkWell(
           onTap: () => services.tts.speak(card.english, 'en-US'),
           customBorder: const CircleBorder(),
@@ -382,6 +484,13 @@ class _EntryRow extends StatelessWidget {
             child: Icon(Icons.volume_up_rounded, size: 19, color: AppTheme.muted),
           ),
         ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
+        ),
+        Text(card.polish,
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
       ],
     );
   }

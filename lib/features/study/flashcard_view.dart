@@ -148,22 +148,14 @@ class _TargetLine extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Flexible(
-          child: Text(card.polish,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5)),
-        ),
-        const SizedBox(width: 8),
-        Text('·', style: TextStyle(fontSize: 24, color: Colors.grey.shade300)),
+        // English first (headword), then the Polish translation.
         Flexible(
           child: Text(card.english,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 27,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
                   color: Colors.black)),
         ),
         IconButton(
@@ -171,6 +163,15 @@ class _TargetLine extends StatelessWidget {
           color: scheme.primary,
           tooltip: 'Hear English',
           onPressed: () => onSpeak(card.english, 'en-US'),
+        ),
+        Text('·', style: TextStyle(fontSize: 24, color: Colors.grey.shade300)),
+        Flexible(
+          child: Text(card.polish,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF3A3833))),
         ),
       ],
     );
