@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../data/seed.dart';
+import '../../services/import_export/csv_import.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
@@ -686,6 +688,7 @@ class _ManageMenu extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const CatalogueScreen()),
           );
         }
+        if (v == 'import') _importCsv(context);
         if (v == 'reset') _confirmReset(context);
         if (v == 'clear') _confirmClear(context);
       },
@@ -696,6 +699,14 @@ class _ManageMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.folder_outlined),
             title: Text('Manage categories'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'import',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.upload_file_outlined),
+            title: Text('Import from CSV'),
           ),
         ),
         PopupMenuItem(
@@ -758,6 +769,79 @@ class _ManageMenu extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _importCsv(BuildContext context) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['csv'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || !context.mounted) return;
+
+    final importer = CsvImporter(db);
+    final entries = importer.parse(bytes);
+    if (entries.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No entries found in that file')),
+        );
+      }
+      return;
+    }
+
+    // Suggest a category name derived from the file (Quizlet: "set-<id>-name").
+    final suggested = file.name
+        .replaceAll(RegExp(r'\.csv$', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^set-\d+-'), '')
+        .replaceAll(RegExp(r'[-_]+'), ' ')
+        .trim();
+
+    if (!context.mounted) return;
+    final ctrl = TextEditingController(text: suggested);
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Import ${entries.length} entries'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add them to a category (leave blank for none):'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                hintText: 'Category name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Import')),
+        ],
+      ),
+    );
+    if (confirmed == null) return; // cancelled
+
+    int? catId;
+    final name = confirmed.trim();
+    if (name.isNotEmpty) catId = await db.createCatalogue(name);
+    final n = await importer.insertAll(entries, catalogueId: catId);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $n ${n == 1 ? 'card' : 'cards'}')),
+      );
+    }
   }
 }
 

@@ -34,6 +34,9 @@ dependencies:
   pasteboard: ^0.3.0
   printing: ^5.13.3
 
+  # CSV import (e.g. Quizlet exports).
+  csv: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
