@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_services.dart';
 import '../../services/srs/srs_scheduler.dart';
@@ -6,6 +7,8 @@ import '../../theme.dart';
 import '../editor/card_editor_screen.dart';
 import 'flashcard_view.dart';
 import 'study_controller.dart';
+
+String _plural(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
 
 class StudyScreen extends StatefulWidget {
   const StudyScreen({super.key});
@@ -16,6 +19,19 @@ class StudyScreen extends StatefulWidget {
 
 class _StudyScreenState extends State<StudyScreen> {
   StudyController? _ctrl;
+  bool _revealed = false;
+  StudyDirection _direction = StudyDirection.both;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      final i = p.getInt('study_direction');
+      if (i != null && mounted) {
+        setState(() => _direction = StudyDirection.values[i]);
+      }
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -32,6 +48,12 @@ class _StudyScreenState extends State<StudyScreen> {
     super.dispose();
   }
 
+  Future<void> _setDirection(StudyDirection d) async {
+    setState(() => _direction = d);
+    final p = await SharedPreferences.getInstance();
+    await p.setInt('study_direction', d.index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
@@ -42,10 +64,23 @@ class _StudyScreenState extends State<StudyScreen> {
         title: const Text('Study'),
         backgroundColor: Colors.transparent,
         actions: [
+          PopupMenuButton<StudyDirection>(
+            icon: const Icon(Icons.swap_horiz),
+            tooltip: 'Card direction',
+            onSelected: _setDirection,
+            itemBuilder: (_) => [
+              _dirItem(StudyDirection.both, 'Show both'),
+              _dirItem(StudyDirection.englishToPolish, 'English → Polish'),
+              _dirItem(StudyDirection.polishToEnglish, 'Polish → English'),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload due cards',
-            onPressed: () => ctrl.load(),
+            onPressed: () {
+              setState(() => _revealed = false);
+              ctrl.load();
+            },
           ),
         ],
       ),
@@ -73,6 +108,9 @@ class _StudyScreenState extends State<StudyScreen> {
                         child: FlashcardView(
                           key: ValueKey(card.id),
                           card: card,
+                          direction: _direction,
+                          revealed: _revealed,
+                          onReveal: () => setState(() => _revealed = true),
                           onSpeak: services.tts.speak,
                         ),
                       ),
@@ -80,19 +118,44 @@ class _StudyScreenState extends State<StudyScreen> {
                   ),
                 ),
               ),
-              _GradeBar(
-                onGrade: ctrl.grade,
-                preview: (g) => ctrl.previewFor(card, g),
+              // Bottom action area: a single big "Show Answer" until revealed,
+              // then the four grading buttons (keeps the thumb at the bottom).
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: _revealed
+                    ? _GradeBar(
+                        onGrade: (g) {
+                          setState(() => _revealed = false);
+                          ctrl.grade(g);
+                        },
+                        preview: (g) => ctrl.previewFor(card, g),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.visibility_outlined),
+                            label: const Text('Show Answer',
+                                style: TextStyle(fontSize: 16)),
+                            onPressed: () => setState(() => _revealed = true),
+                          ),
+                        ),
+                      ),
               ),
-              TextButton.icon(
-                icon: const Icon(Icons.edit, size: 18),
-                label: const Text('Edit this card'),
-                onPressed: () async {
+              _BottomLinks(
+                canUndo: ctrl.canUndo,
+                onUndo: () {
+                  setState(() => _revealed = false);
+                  ctrl.undo();
+                },
+                onEdit: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => CardEditorScreen(cardId: card.id),
                     ),
                   );
+                  setState(() => _revealed = false);
                   await ctrl.load();
                 },
               ),
@@ -101,6 +164,49 @@ class _StudyScreenState extends State<StudyScreen> {
           );
         },
       ),
+    );
+  }
+
+  PopupMenuItem<StudyDirection> _dirItem(StudyDirection d, String label) {
+    return PopupMenuItem(
+      value: d,
+      child: Row(
+        children: [
+          Icon(_direction == d ? Icons.check : Icons.swap_horiz,
+              size: 18,
+              color: _direction == d ? AppTheme.coral : AppTheme.muted),
+          const SizedBox(width: 10),
+          Text(label),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomLinks extends StatelessWidget {
+  final bool canUndo;
+  final VoidCallback onUndo;
+  final VoidCallback onEdit;
+  const _BottomLinks(
+      {required this.canUndo, required this.onUndo, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (canUndo)
+          TextButton.icon(
+            icon: const Icon(Icons.undo, size: 18),
+            label: const Text('Undo'),
+            onPressed: onUndo,
+          ),
+        TextButton.icon(
+          icon: const Icon(Icons.edit, size: 18),
+          label: const Text('Edit this card'),
+          onPressed: onEdit,
+        ),
+      ],
     );
   }
 }
@@ -124,7 +230,7 @@ class _ProgressBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(6),
           ),
           const SizedBox(height: 6),
-          Text('$remaining due  ·  $reviewed reviewed',
+          Text('${_plural(remaining, 'card')} due  ·  $reviewed reviewed',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
         ],
       ),
@@ -166,8 +272,8 @@ class _GradeBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 12),
             elevation: 0,
             side: BorderSide(color: border ?? bg, width: 1),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           onPressed: () => onGrade(grade),
           child: Column(
@@ -201,7 +307,7 @@ class _DoneView extends StatelessWidget {
           Text(reviewed == 0 ? 'No cards due right now' : 'Session complete!',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text('$reviewed cards reviewed',
+          Text('${_plural(reviewed, 'card')} reviewed',
               style: TextStyle(color: Colors.grey.shade600)),
           const SizedBox(height: 18),
           OutlinedButton.icon(

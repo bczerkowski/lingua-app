@@ -819,7 +819,8 @@ class _Header extends StatelessWidget {
                       const Icon(Icons.school_outlined,
                           size: 20, color: AppTheme.coralDark),
                       const SizedBox(width: 7),
-                      Text('$due cards due — study now →',
+                      Text(
+                          '$due ${due == 1 ? 'card' : 'cards'} due — study now →',
                           style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,

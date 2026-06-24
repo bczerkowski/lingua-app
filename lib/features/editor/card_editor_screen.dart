@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../services/media/image_import_service.dart';
+import '../../theme.dart';
 
 /// Create or edit a card. Supports editing every field, choosing a catalogue,
 /// deleting, AI image generation (with the manual-upload fallback if it fails).
@@ -23,7 +24,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   final _english = TextEditingController();
   final _example = TextEditingController();
   final _definition = TextEditingController();
-  final _tags = TextEditingController();
+  List<String> _tagList = [];
 
   int? _catalogueId;
   bool _isCard = true;
@@ -54,7 +55,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _english.text = c.english;
       _example.text = c.exampleSentence ?? '';
       _definition.text = c.englishDefinition ?? '';
-      _tags.text = c.tags;
+      _tagList = c.tags
+          .split(';')
+          .map((t) => t.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
       _catalogueId = c.catalogueId;
       _isCard = c.isCard;
       _imageBytes = c.imageBytes;
@@ -64,7 +69,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   @override
   void dispose() {
-    for (final c in [_polish, _english, _example, _definition, _tags]) {
+    for (final c in [_polish, _english, _example, _definition]) {
       c.dispose();
     }
     super.dispose();
@@ -94,8 +99,13 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             _field(_english, 'English term', required: true),
             _field(_example, 'Example sentence', maxLines: 2),
             _field(_definition, 'English definition', maxLines: 2),
-            _field(_tags, 'Tags — first is part of speech (e.g. noun;animals)'),
-            const SizedBox(height: 8),
+            _TagInput(
+              // Re-seed the chip editor once the card's tags have loaded.
+              key: ValueKey('tags_${_tagList.join('|')}'),
+              initial: _tagList,
+              onChanged: (t) => _tagList = t,
+            ),
+            const SizedBox(height: 12),
             _CatalogueDropdown(
               db: db,
               value: _catalogueId,
@@ -293,7 +303,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             english: _english.text.trim(),
             exampleSentence: Value(_nullIfEmpty(_example.text)),
             englishDefinition: Value(_nullIfEmpty(_definition.text)),
-            tags: Value(_tags.text.trim()),
+            tags: Value(_tagList.join(';')),
             catalogueId: Value(_catalogueId),
             imageBytes: Value(_imageBytes),
             imageSource: Value(_imageSource),
@@ -307,7 +317,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         english: Value(_english.text.trim()),
         exampleSentence: Value(_nullIfEmpty(_example.text)),
         englishDefinition: Value(_nullIfEmpty(_definition.text)),
-        tags: Value(_tags.text.trim()),
+        tags: Value(_tagList.join(';')),
         catalogueId: Value(_catalogueId),
         imageBytes: Value(_imageBytes),
         imageSource: Value(_imageSource),
@@ -411,5 +421,103 @@ class _CatalogueDropdown extends StatelessWidget {
     if (name == null || name.isEmpty) return;
     final id = await db.createCatalogue(name);
     onChanged(id);
+  }
+}
+
+/// Chip-style tag editor: type a word then press space/comma/Enter to turn it
+/// into a chip. The first chip is the part of speech.
+class _TagInput extends StatefulWidget {
+  final List<String> initial;
+  final ValueChanged<List<String>> onChanged;
+  const _TagInput(
+      {super.key, required this.initial, required this.onChanged});
+
+  @override
+  State<_TagInput> createState() => _TagInputState();
+}
+
+class _TagInputState extends State<_TagInput> {
+  late final List<String> _tags = [...widget.initial];
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit(String raw) {
+    final parts = raw
+        .split(RegExp(r'[;,\s]+'))
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty);
+    var changed = false;
+    for (final p in parts) {
+      if (!_tags.contains(p)) {
+        _tags.add(p);
+        changed = true;
+      }
+    }
+    _ctrl.clear();
+    setState(() {});
+    if (changed) widget.onChanged(_tags);
+    _focus.requestFocus();
+  }
+
+  void _onChanged(String v) {
+    if (v.endsWith(' ') || v.endsWith(',') || v.endsWith(';')) _commit(v);
+  }
+
+  void _remove(String t) {
+    setState(() => _tags.remove(t));
+    widget.onChanged(_tags);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: 'Tags',
+        helperText: 'Type a word, then space or comma. First tag = part of speech.',
+        border: OutlineInputBorder(),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (var i = 0; i < _tags.length; i++)
+            Chip(
+              label: Text(i == 0 ? _tags[i].toUpperCase() : '#${_tags[i]}'),
+              labelStyle: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w500,
+                  color: i == 0 ? const Color(0xFF55524B) : AppTheme.muted),
+              backgroundColor: i == 0 ? AppTheme.sand : Colors.white,
+              side: i == 0
+                  ? BorderSide.none
+                  : const BorderSide(color: AppTheme.border),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onDeleted: () => _remove(_tags[i]),
+            ),
+          IntrinsicWidth(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 90),
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                decoration: const InputDecoration.collapsed(hintText: 'add tag…'),
+                onChanged: _onChanged,
+                onSubmitted: _commit,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

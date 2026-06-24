@@ -4,12 +4,23 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
 import '../../theme.dart';
+import 'study_controller.dart';
 
-/// A single flippable flashcard. Tap to reveal the back.
+/// A single flashcard whose reveal state is controlled by the parent.
 class FlashcardView extends StatefulWidget {
   final Flashcard card;
+  final StudyDirection direction;
+  final bool revealed;
+  final VoidCallback onReveal;
   final void Function(String text, String lang) onSpeak;
-  const FlashcardView({super.key, required this.card, required this.onSpeak});
+  const FlashcardView({
+    super.key,
+    required this.card,
+    required this.direction,
+    required this.revealed,
+    required this.onReveal,
+    required this.onSpeak,
+  });
 
   @override
   State<FlashcardView> createState() => _FlashcardViewState();
@@ -19,21 +30,19 @@ class _FlashcardViewState extends State<FlashcardView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 460));
-  bool _showBack = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.revealed) _c.value = 1;
+  }
 
   @override
   void didUpdateWidget(covariant FlashcardView old) {
     super.didUpdateWidget(old);
-    // Reset to the front whenever a new card is shown.
-    if (old.card.id != widget.card.id && _showBack) {
-      _showBack = false;
-      _c.reverse();
+    if (widget.revealed != old.revealed) {
+      widget.revealed ? _c.forward() : _c.reverse();
     }
-  }
-
-  void _flip() {
-    setState(() => _showBack = !_showBack);
-    _showBack ? _c.forward() : _c.reverse();
   }
 
   @override
@@ -45,7 +54,7 @@ class _FlashcardViewState extends State<FlashcardView>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _flip,
+      onTap: widget.revealed ? null : widget.onReveal,
       child: AnimatedBuilder(
         animation: _c,
         builder: (context, _) {
@@ -60,9 +69,14 @@ class _FlashcardViewState extends State<FlashcardView>
                 ? Transform(
                     alignment: Alignment.center,
                     transform: Matrix4.identity()..rotateY(math.pi),
-                    child: _CardFace(child: _Back(card: widget.card, onSpeak: widget.onSpeak)),
+                    child: _CardFace(
+                        child: _Back(card: widget.card, onSpeak: widget.onSpeak)),
                   )
-                : _CardFace(child: _Front(card: widget.card, onSpeak: widget.onSpeak)),
+                : _CardFace(
+                    child: _Front(
+                        card: widget.card,
+                        direction: widget.direction,
+                        onSpeak: widget.onSpeak)),
           );
         },
       ),
@@ -137,6 +151,7 @@ class _TagHeader extends StatelessWidget {
   }
 }
 
+/// Both terms on one line: English (headword) · Polish (translation).
 class _TargetLine extends StatelessWidget {
   final Flashcard card;
   final void Function(String, String) onSpeak;
@@ -148,7 +163,6 @@ class _TargetLine extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // English first (headword), then the Polish translation.
         Flexible(
           child: Text(card.english,
               textAlign: TextAlign.center,
@@ -178,10 +192,58 @@ class _TargetLine extends StatelessWidget {
   }
 }
 
+/// A single big prompt word (used on the front when direction hides one side).
+class _PromptWord extends StatelessWidget {
+  final String text;
+  final VoidCallback? onSpeak;
+  const _PromptWord({required this.text, this.onSpeak});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Flexible(
+          child: Text(text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  color: Colors.black)),
+        ),
+        if (onSpeak != null)
+          IconButton(
+            icon: const Icon(Icons.volume_up_rounded, size: 20),
+            color: scheme.primary,
+            tooltip: 'Hear it',
+            onPressed: onSpeak,
+          ),
+      ],
+    );
+  }
+}
+
 class _Front extends StatelessWidget {
   final Flashcard card;
+  final StudyDirection direction;
   final void Function(String, String) onSpeak;
-  const _Front({required this.card, required this.onSpeak});
+  const _Front(
+      {required this.card, required this.direction, required this.onSpeak});
+
+  Widget _prompt() {
+    switch (direction) {
+      case StudyDirection.both:
+        return _TargetLine(card: card, onSpeak: onSpeak);
+      case StudyDirection.englishToPolish:
+        return _PromptWord(
+            text: card.english,
+            onSpeak: () => onSpeak(card.english, 'en-US'));
+      case StudyDirection.polishToEnglish:
+        return _PromptWord(text: card.polish);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,27 +251,14 @@ class _Front extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _TagHeader(card: card),
-        const SizedBox(height: 28),
-        _TargetLine(card: card, onSpeak: onSpeak),
-        const SizedBox(height: 28),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color: AppTheme.sand,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.touch_app_outlined, size: 15, color: AppTheme.muted),
-              SizedBox(width: 6),
-              Text('Tap to reveal',
-                  style: TextStyle(
-                      color: AppTheme.muted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500)),
-            ],
-          ),
+        const SizedBox(height: 32),
+        _prompt(),
+        const SizedBox(height: 32),
+        Text(
+          direction == StudyDirection.both
+              ? 'Recall the meaning'
+              : 'Recall the translation',
+          style: const TextStyle(color: AppTheme.muted, fontSize: 13),
         ),
       ],
     );
@@ -274,8 +323,9 @@ class _ImageAnchor extends StatelessWidget {
           border: Border.all(color: AppTheme.border),
         ),
         clipBehavior: Clip.antiAlias,
+        // contain keeps the image's aspect ratio intact (no stretching/squishing).
         child: card.imageBytes != null
-            ? Image.memory(card.imageBytes!, fit: BoxFit.cover)
+            ? Image.memory(card.imageBytes!, fit: BoxFit.contain)
             : const Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

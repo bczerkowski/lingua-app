@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import '../../data/db/database.dart';
 import '../../services/srs/srs_scheduler.dart';
 
+/// Which side of the card is shown on the front (what you recall).
+enum StudyDirection { both, englishToPolish, polishToEnglish }
+
 /// Drives the study session: holds the in-memory queue and applies SM-2 grades.
 class StudyController extends ChangeNotifier {
   final AppDatabase db;
@@ -14,9 +17,14 @@ class StudyController extends ChangeNotifier {
   bool _loading = true;
   int _reviewed = 0;
 
+  // One level of undo for the last grade.
+  Flashcard? _undoSnapshot; // card row before the last grade
+  bool _undoRequeued = false; // whether the last grade re-queued the card
+
   bool get loading => _loading;
   int get remaining => _queue.length;
   int get reviewed => _reviewed;
+  bool get canUndo => _undoSnapshot != null;
   Flashcard? get current => _queue.isEmpty ? null : _queue.first;
 
   Future<void> load({int? catalogueId}) async {
@@ -26,6 +34,7 @@ class StudyController extends ChangeNotifier {
       ..clear()
       ..addAll(await db.dueCards(DateTime.now(), catalogueId: catalogueId));
     _reviewed = 0;
+    _undoSnapshot = null;
     _loading = false;
     notifyListeners();
   }
@@ -63,12 +72,41 @@ class StudyController extends ChangeNotifier {
       ),
     );
 
+    // Snapshot for undo (the state *before* this grade).
+    _undoSnapshot = c;
     _queue.removeAt(0);
     _reviewed++;
     // Card still due within the session (learning step in minutes) -> requeue.
-    if (next.dueDate.difference(now).inMinutes < 20) {
-      _queue.add(c);
+    _undoRequeued = next.dueDate.difference(now).inMinutes < 20;
+    if (_undoRequeued) _queue.add(c);
+    notifyListeners();
+  }
+
+  /// Reverse the last grade: restore the card's SRS state and put it back at
+  /// the front of the queue.
+  Future<void> undo() async {
+    final snap = _undoSnapshot;
+    if (snap == null) return;
+
+    await (db.update(db.cards)..where((t) => t.id.equals(snap.id))).write(
+      CardsCompanion(
+        easeFactor: Value(snap.easeFactor),
+        intervalDays: Value(snap.intervalDays),
+        repetitions: Value(snap.repetitions),
+        lapses: Value(snap.lapses),
+        learningStep: Value(snap.learningStep),
+        dueDate: Value(snap.dueDate),
+      ),
+    );
+
+    // If the grade had re-queued the card, drop that requeued copy first.
+    if (_undoRequeued) {
+      final i = _queue.lastIndexWhere((e) => e.id == snap.id);
+      if (i != -1) _queue.removeAt(i);
     }
+    _queue.insert(0, snap);
+    if (_reviewed > 0) _reviewed--;
+    _undoSnapshot = null;
     notifyListeners();
   }
 }
