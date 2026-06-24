@@ -57,8 +57,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     final db = AppServices.of(context).db;
     final c = await db.getCard(widget.cardId!);
     if (c == null || !mounted) return;
-    final extra = await db.meaningsFor(widget.cardId!);
-    if (!mounted) return;
+    // Populate the primary fields first — this must never depend on the
+    // (newer) meanings query succeeding.
     setState(() {
       _polish.text = c.polish;
       _english.text = c.english;
@@ -73,14 +73,21 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _isCard = c.isCard;
       _imageBytes = c.imageBytes;
       _imageSource = c.imageSource;
-      for (final m in extra) {
-        _extra.add(_MeaningDraft(
-          polish: m.polishTranslation,
-          definition: m.englishDefinition ?? '',
-          example: m.exampleSentence ?? '',
-        ));
-      }
     });
+    // Additional meanings are best-effort; a failure here must not blank the card.
+    try {
+      final extra = await db.meaningsFor(widget.cardId!);
+      if (!mounted) return;
+      setState(() {
+        for (final m in extra) {
+          _extra.add(_MeaningDraft(
+            polish: m.polishTranslation,
+            definition: m.englishDefinition ?? '',
+            example: m.exampleSentence ?? '',
+          ));
+        }
+      });
+    } catch (_) {/* ignore — primary fields already loaded */}
   }
 
   @override

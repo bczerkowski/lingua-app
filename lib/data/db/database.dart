@@ -48,10 +48,21 @@ class AppDatabase extends _$AppDatabase {
           if (!hasGender) {
             await customStatement('ALTER TABLE cards ADD COLUMN gender TEXT');
           }
-          final tbls = await customSelect(
-                  "SELECT name FROM sqlite_master WHERE type='table' AND name='meanings'")
-              .get();
-          if (tbls.isEmpty) {
+          // Ensure the meanings table exists AND has the expected columns;
+          // recreate it if missing or malformed (e.g. a half-applied migration).
+          final mcols = await customSelect("PRAGMA table_info('meanings')").get();
+          final mnames =
+              mcols.map((r) => r.read<String>('name')).toSet();
+          const needed = {
+            'id',
+            'card_id',
+            'polish_translation',
+            'english_definition',
+            'example_sentence',
+            'sort_order'
+          };
+          if (!needed.every(mnames.contains)) {
+            await customStatement('DROP TABLE IF EXISTS meanings');
             await createMigrator().createTable(meanings);
           }
         },
