@@ -156,12 +156,7 @@ class _TargetLine extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5)),
         ),
-        IconButton(
-          icon: const Icon(Icons.volume_up_rounded, size: 20),
-          color: scheme.primary,
-          tooltip: 'Hear Polish',
-          onPressed: () => onSpeak(card.polish, 'pl-PL'),
-        ),
+        const SizedBox(width: 8),
         Text('·', style: TextStyle(fontSize: 24, color: Colors.grey.shade300)),
         Flexible(
           child: Text(card.english,

@@ -364,22 +364,22 @@ class _EntryRow extends StatelessWidget {
                 fontSize: 21,
                 fontWeight: FontWeight.w600,
                 color: Colors.black)),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
+        ),
+        Text(card.english,
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
         const SizedBox(width: 4),
         InkWell(
-          onTap: () => services.tts.speak(card.polish, 'pl-PL'),
+          onTap: () => services.tts.speak(card.english, 'en-US'),
           customBorder: const CircleBorder(),
           child: const Padding(
             padding: EdgeInsets.all(3),
             child: Icon(Icons.volume_up_rounded, size: 19, color: AppTheme.muted),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
-        ),
-        Text(card.english,
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
       ],
     );
   }
