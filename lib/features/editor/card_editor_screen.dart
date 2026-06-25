@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   String? _imageSource;
   String? _imageError;
   bool _generating = false;
+  bool _saving = false;
   bool _loaded = false;
   final ImageImportService _importer = ImageImportService();
   final WordAssistService _assist = WordAssistService();
@@ -120,8 +122,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _field(_english, 'English term', required: true),
-            _field(_polish, 'Polish term', required: true),
+            _field(_english, 'English term', required: true, maxLength: 200),
+            _field(_polish, 'Polish term', required: true, maxLength: 200),
             // Additional Polish translations for the same word (e.g. a verb and
             // an adjective sense). Example/definition below stay shared.
             for (var i = 0; i < _extraPolish.length; i++) _extraPolishField(i),
@@ -167,9 +169,17 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             _imageSection(),
             const SizedBox(height: 20),
             FilledButton.icon(
-              icon: const Icon(Icons.save),
-              label: Text(_isNew ? 'Create' : 'Save changes'),
-              onPressed: _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.save),
+              label: Text(_saving
+                  ? 'Saving…'
+                  : (_isNew ? 'Create' : 'Save changes')),
+              onPressed: _saving ? null : _save,
             ),
           ],
         ),
@@ -178,12 +188,13 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   }
 
   Widget _field(TextEditingController c, String label,
-      {bool required = false, int maxLines = 1}) {
+      {bool required = false, int maxLines = 1, int? maxLength}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: c,
         maxLines: maxLines,
+        maxLength: maxLength,
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
@@ -193,6 +204,36 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             : null,
       ),
     );
+  }
+
+  /// Cap an imported/generated image so the stored BLOB stays small. Large
+  /// photos or AI images (multi-MB) bloat the offline DB and can make the
+  /// insert fail; downscale anything bigger than [maxDim]px on its long edge.
+  /// Best-effort: returns the original bytes if decoding/encoding fails.
+  Future<Uint8List> _capImage(Uint8List input,
+      {int maxDim = 1024, int maxBytes = 700 * 1024}) async {
+    try {
+      final codec = await ui.instantiateImageCodec(input);
+      final frame = await codec.getNextFrame();
+      final img = frame.image;
+      final longest = img.width > img.height ? img.width : img.height;
+      if (longest <= maxDim && input.lengthInBytes <= maxBytes) {
+        img.dispose();
+        return input;
+      }
+      final scale = maxDim / longest;
+      final tw = (img.width * scale).round().clamp(1, maxDim);
+      final th = (img.height * scale).round().clamp(1, maxDim);
+      img.dispose();
+      final scaledCodec =
+          await ui.instantiateImageCodec(input, targetWidth: tw, targetHeight: th);
+      final scaled = (await scaledCodec.getNextFrame()).image;
+      final data = await scaled.toByteData(format: ui.ImageByteFormat.png);
+      scaled.dispose();
+      return data?.buffer.asUint8List() ?? input;
+    } catch (_) {
+      return input;
+    }
   }
 
   Widget _extraPolishField(int i) {
@@ -483,90 +524,111 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     final provider = AppServices.of(context).imageGen;
     final result = await provider.generate(word, _example.text.trim());
     if (!mounted) return;
-    setState(() {
-      _generating = false;
-      if (result.ok && result.bytes != null) {
-        _imageBytes = result.bytes;
+    if (result.ok && result.bytes != null) {
+      final capped = await _capImage(result.bytes!);
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _imageBytes = capped;
         _imageSource = 'ai';
-      } else {
-        // Failure -> surface the error so the manual-upload path is obvious.
+      });
+    } else {
+      // Failure -> surface the error so the manual-upload path is obvious.
+      setState(() {
+        _generating = false;
         _imageError = result.error;
-      }
-    });
+      });
+    }
   }
 
   /// Pick a PNG / JPG / PDF from disk (PDFs are rasterized to an image).
   Future<void> _pickFile() async {
     final result = await _importer.pickFromFile();
-    _applyImport(result);
+    await _applyImport(result);
   }
 
   /// Paste an image straight from the clipboard (e.g. a Print-Screen capture).
   Future<void> _pasteScreenshot() async {
     final result = await _importer.pasteFromClipboard();
-    _applyImport(result);
+    await _applyImport(result);
   }
 
-  void _applyImport(ImageImportResult result) {
+  Future<void> _applyImport(ImageImportResult result) async {
     if (!mounted || result.cancelled) return;
-    setState(() {
-      if (result.ok) {
-        _imageBytes = result.bytes;
+    if (result.ok) {
+      final capped = await _capImage(result.bytes!);
+      if (!mounted) return;
+      setState(() {
+        _imageBytes = capped;
         _imageSource = 'manual';
         _imageError = null;
-      } else {
-        _imageError = result.error;
-      }
-    });
+      });
+    } else {
+      setState(() => _imageError = result.error);
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Persistence
   // ---------------------------------------------------------------------------
   Future<void> _save() async {
-    if (!_form.currentState!.validate()) return;
+    if (_saving) return;
+    // Validation failures used to fail silently if the empty field was scrolled
+    // off-screen — surface a message as well.
+    if (!_form.currentState!.validate()) {
+      _toast('Add the English and Polish terms first');
+      return;
+    }
+    setState(() => _saving = true);
     final db = AppServices.of(context).db;
     final now = DateTime.now();
-
-    int cardId;
-    if (_isNew) {
-      cardId = await db.into(db.cards).insert(CardsCompanion.insert(
-            polish: _polish.text.trim(),
-            english: _english.text.trim(),
-            exampleSentence: Value(_nullIfEmpty(_example.text)),
-            englishDefinition: Value(_nullIfEmpty(_definition.text)),
-            tags: Value(_tagList.join(';')),
-            catalogueId: Value(_catalogueId),
-            imageBytes: Value(_imageBytes),
-            imageSource: Value(_imageSource),
-            isCard: Value(_isCard),
-            dueDate: Value(_isCard ? now : null),
-          ));
-    } else {
-      cardId = widget.cardId!;
-      await (db.update(db.cards)..where((t) => t.id.equals(cardId)))
-          .write(CardsCompanion(
-        polish: Value(_polish.text.trim()),
-        english: Value(_english.text.trim()),
-        exampleSentence: Value(_nullIfEmpty(_example.text)),
-        englishDefinition: Value(_nullIfEmpty(_definition.text)),
-        tags: Value(_tagList.join(';')),
-        catalogueId: Value(_catalogueId),
-        imageBytes: Value(_imageBytes),
-        imageSource: Value(_imageSource),
-        isCard: Value(_isCard),
-        updatedAt: Value(now),
-      ));
+    try {
+      int cardId;
+      if (_isNew) {
+        cardId = await db.into(db.cards).insert(CardsCompanion.insert(
+              polish: _polish.text.trim(),
+              english: _english.text.trim(),
+              exampleSentence: Value(_nullIfEmpty(_example.text)),
+              englishDefinition: Value(_nullIfEmpty(_definition.text)),
+              tags: Value(_tagList.join(';')),
+              catalogueId: Value(_catalogueId),
+              imageBytes: Value(_imageBytes),
+              imageSource: Value(_imageSource),
+              isCard: Value(_isCard),
+              dueDate: Value(_isCard ? now : null),
+            ));
+      } else {
+        cardId = widget.cardId!;
+        await (db.update(db.cards)..where((t) => t.id.equals(cardId)))
+            .write(CardsCompanion(
+          polish: Value(_polish.text.trim()),
+          english: Value(_english.text.trim()),
+          exampleSentence: Value(_nullIfEmpty(_example.text)),
+          englishDefinition: Value(_nullIfEmpty(_definition.text)),
+          tags: Value(_tagList.join(';')),
+          catalogueId: Value(_catalogueId),
+          imageBytes: Value(_imageBytes),
+          imageSource: Value(_imageSource),
+          isCard: Value(_isCard),
+          updatedAt: Value(now),
+        ));
+      }
+      // Persist the additional Polish translations.
+      await db.replaceMeanings(
+        cardId,
+        [
+          for (final c in _extraPolish)
+            (polish: c.text, definition: null, example: null),
+        ],
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      // Never fail silently: tell the user why the save didn't go through.
+      if (mounted) {
+        setState(() => _saving = false);
+        _toast('Couldn\'t save: $e');
+      }
     }
-    // Persist the additional Polish translations.
-    await db.replaceMeanings(
-      cardId,
-      [
-        for (final c in _extraPolish)
-          (polish: c.text, definition: null, example: null),
-      ],
-    );
-    if (mounted) Navigator.of(context).pop(true);
   }
 
   Future<void> _confirmDelete() async {
