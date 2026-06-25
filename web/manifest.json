@@ -1,11 +1,11 @@
 {
-    "name": "lingua_app",
-    "short_name": "lingua_app",
+    "name": "Lexicon",
+    "short_name": "Lexicon",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F0EEE6",
+    "theme_color": "#F0EEE6",
+    "description": "Polish–English dictionary and spaced-repetition flashcards.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
