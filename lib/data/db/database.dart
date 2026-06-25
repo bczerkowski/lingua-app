@@ -114,14 +114,22 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------------
 
   /// Lightning-fast bidirectional lookup. (For 10k+ rows, swap to FTS5.)
-  Stream<List<Flashcard>> searchEntries(String query) {
+  ///
+  /// [catalogueId] filters to one category at the DB level so the result is
+  /// correct regardless of how the deck is sorted. The limit is a high safety
+  /// ceiling — small enough to stay snappy, large enough that a personal deck
+  /// is never silently truncated (the old limit of 80 hid newer entries).
+  Stream<List<Flashcard>> searchEntries(String query, {int? catalogueId}) {
     final q = query.trim();
     final sel = select(cards)
       ..orderBy([(t) => OrderingTerm(expression: t.english)])
-      ..limit(80);
+      ..limit(5000);
     if (q.isNotEmpty) {
       final like = '%$q%';
       sel.where((t) => t.polish.like(like) | t.english.like(like));
+    }
+    if (catalogueId != null) {
+      sel.where((t) => t.catalogueId.equals(catalogueId));
     }
     return sel.watch();
   }

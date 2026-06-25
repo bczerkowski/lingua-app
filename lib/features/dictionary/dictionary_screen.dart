@@ -172,23 +172,14 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
             ),
             Expanded(
               child: StreamBuilder<List<Flashcard>>(
-                stream: db.searchEntries(_query),
+                // Search + category filter are applied in the query so the
+                // result is always correct, even for large decks.
+                stream: db.searchEntries(_query, catalogueId: _filterCatId),
                 builder: (context, snap) {
-                  final items = snap.data ?? const <Flashcard>[];
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (items.isEmpty) {
-                    return Center(
-                      child: Text('No matching entries.',
-                          style: TextStyle(fontSize: 16, color: AppTheme.muted)),
-                    );
-                  }
-                  final filtered = _filterCatId == null
-                      ? items
-                      : items
-                          .where((c) => c.catalogueId == _filterCatId)
-                          .toList();
+                  final loading =
+                      snap.connectionState == ConnectionState.waiting &&
+                          !snap.hasData;
+                  final filtered = snap.data ?? const <Flashcard>[];
                   return Column(
                     children: [
                       _ActionBar(
@@ -222,6 +213,8 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         }),
                         onDelete: () => _deleteSelected(db),
                       ),
+                      // Keep the category bar visible at all times so an empty
+                      // category never traps the user on a blank screen.
                       if (!_selectMode)
                         _CategoryFilterBar(
                           db: db,
@@ -232,14 +225,23 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         child: StreamBuilder<List<Catalogue>>(
                           stream: db.watchCatalogues(),
                           builder: (context, catSnap) {
+                            if (loading) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
                             final names = <int, String>{
                               for (final c
                                   in (catSnap.data ?? const <Catalogue>[]))
                                 c.id: c.name
                             };
                             if (filtered.isEmpty) {
+                              final msg = _query.trim().isNotEmpty
+                                  ? 'No matching entries.'
+                                  : _filterCatId != null
+                                      ? 'No entries in this category.'
+                                      : 'No entries yet — tap “New entry”.';
                               return Center(
-                                child: Text('No entries in this category.',
+                                child: Text(msg,
                                     style: TextStyle(
                                         fontSize: 16, color: AppTheme.muted)),
                               );
