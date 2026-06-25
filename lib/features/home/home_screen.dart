@@ -12,6 +12,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
+  // The dictionary's current category filter — Study follows it, so picking a
+  // category in the dictionary (then "study now") studies just that category.
+  int? _dictFilterCatId;
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +22,11 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(
         index: _index,
         children: [
-          DictionaryScreen(onStudyTap: () => setState(() => _index = 1)),
-          StudyScreen(active: _index == 1),
+          DictionaryScreen(
+            onStudyTap: () => setState(() => _index = 1),
+            onFilterChanged: (id) => setState(() => _dictFilterCatId = id),
+          ),
+          StudyScreen(active: _index == 1, catalogueId: _dictFilterCatId),
         ],
       ),
       bottomNavigationBar: NavigationBar(

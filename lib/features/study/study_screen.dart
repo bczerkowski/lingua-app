@@ -14,7 +14,12 @@ String _plural(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
 class StudyScreen extends StatefulWidget {
   /// True when the Study tab is the visible tab.
   final bool active;
-  const StudyScreen({super.key, required this.active});
+
+  /// Category to study, mirrored from the dictionary's filter (null = all).
+  /// Applied whenever the Study tab becomes active; the in-screen chips can
+  /// still override it for the current session.
+  final int? catalogueId;
+  const StudyScreen({super.key, required this.active, this.catalogueId});
 
   @override
   State<StudyScreen> createState() => _StudyScreenState();
@@ -35,6 +40,7 @@ class _StudyScreenState extends State<StudyScreen> {
   @override
   void initState() {
     super.initState();
+    _studyCatId = widget.catalogueId;
     SharedPreferences.getInstance().then((p) {
       final i = p.getInt('study_direction');
       if (i != null && mounted) {
@@ -59,6 +65,8 @@ class _StudyScreenState extends State<StudyScreen> {
     // Reload the due queue each time the Study tab becomes visible, so newly
     // imported/edited/deleted cards are reflected (and stale ones drop out).
     if (widget.active && !old.active) {
+      // Re-sync to the dictionary's current category each time we open Study.
+      setState(() => _studyCatId = widget.catalogueId);
       _reload();
     }
   }

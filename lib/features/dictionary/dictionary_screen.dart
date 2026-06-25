@@ -15,7 +15,10 @@ import '../stats/stats_screen.dart';
 
 class DictionaryScreen extends StatefulWidget {
   final VoidCallback onStudyTap;
-  const DictionaryScreen({super.key, required this.onStudyTap});
+  // Reports the selected category up so the Study tab can follow it.
+  final ValueChanged<int?> onFilterChanged;
+  const DictionaryScreen(
+      {super.key, required this.onStudyTap, required this.onFilterChanged});
 
   @override
   State<DictionaryScreen> createState() => _DictionaryScreenState();
@@ -219,7 +222,10 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         _CategoryFilterBar(
                           db: db,
                           selectedId: _filterCatId,
-                          onSelect: (id) => setState(() => _filterCatId = id),
+                          onSelect: (id) {
+                            setState(() => _filterCatId = id);
+                            widget.onFilterChanged(id);
+                          },
                         ),
                       Expanded(
                         child: StreamBuilder<List<Catalogue>>(
