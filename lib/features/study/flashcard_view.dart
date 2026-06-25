@@ -326,7 +326,38 @@ class _Back extends StatelessWidget {
               style: const TextStyle(fontSize: 15, color: Colors.black)),
         const SizedBox(height: 18),
         _ImageAnchor(card: card),
+        if (card.note != null && card.note!.trim().isNotEmpty)
+          _NoteLine(text: card.note!.trim()),
       ],
+    );
+  }
+}
+
+/// A small, non-invasive personal note shown under the card body.
+class _NoteLine extends StatelessWidget {
+  final String text;
+  const _NoteLine({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.sticky_note_2_outlined,
+              size: 15, color: AppTheme.muted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    fontStyle: FontStyle.italic,
+                    color: AppTheme.muted)),
+          ),
+        ],
+      ),
     );
   }
 }

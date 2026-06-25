@@ -26,6 +26,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   final _english = TextEditingController();
   final _example = TextEditingController();
   final _definition = TextEditingController();
+  final _note = TextEditingController();
   List<String> _tagList = [];
 
   int? _catalogueId;
@@ -66,6 +67,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _english.text = c.english;
       _example.text = c.exampleSentence ?? '';
       _definition.text = c.englishDefinition ?? '';
+      _note.text = c.note ?? '';
       _tagList = c.tags
           .split(';')
           .map((t) => t.trim())
@@ -93,7 +95,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   @override
   void dispose() {
-    for (final c in [_polish, _english, _example, _definition]) {
+    for (final c in [_polish, _english, _example, _definition, _note]) {
       c.dispose();
     }
     for (final c in _extraPolish) {
@@ -138,10 +140,10 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             ),
             _assistRow('Suggest Polish meaning', Icons.translate, 'pl',
                 _suggestPolish),
-            _field(_example, 'Example sentence', maxLines: 2),
+            _field(_example, 'Example sentence', maxLines: 2, maxLength: 300),
             _assistRow('Generate example sentence', Icons.auto_awesome, 'ex',
                 _genExample),
-            _field(_definition, 'English definition', maxLines: 2),
+            _field(_definition, 'English definition', maxLines: 2, maxLength: 500),
             _assistRow('Generate definition', Icons.auto_awesome, 'def',
                 _genDefinition),
             const SizedBox(height: 12),
@@ -167,7 +169,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             ),
             const SizedBox(height: 8),
             _imageSection(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            // Personal note — kept last; shown subtly on the study card.
+            _field(_note, 'Note (optional — tips, mnemonics)',
+                maxLines: 3, maxLength: 500),
+            const SizedBox(height: 12),
             FilledButton.icon(
               icon: _saving
                   ? const SizedBox(
@@ -590,6 +596,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
               english: _english.text.trim(),
               exampleSentence: Value(_nullIfEmpty(_example.text)),
               englishDefinition: Value(_nullIfEmpty(_definition.text)),
+              note: Value(_nullIfEmpty(_note.text)),
               tags: Value(_tagList.join(';')),
               catalogueId: Value(_catalogueId),
               imageBytes: Value(_imageBytes),
@@ -605,6 +612,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           english: Value(_english.text.trim()),
           exampleSentence: Value(_nullIfEmpty(_example.text)),
           englishDefinition: Value(_nullIfEmpty(_definition.text)),
+          note: Value(_nullIfEmpty(_note.text)),
           tags: Value(_tagList.join(';')),
           catalogueId: Value(_catalogueId),
           imageBytes: Value(_imageBytes),

@@ -22,6 +22,10 @@ class Cards extends Table {
   TextColumn get exampleSentence => text().nullable()();
   TextColumn get englishDefinition => text().nullable()();
 
+  // Free-form personal note (mnemonics, usage tips, etc.). Shown subtly on the
+  // study card.
+  TextColumn get note => text().nullable()();
+
   // Domain tags stored as a ';'-separated string. By convention the first tag
   // is the part of speech (e.g. "noun") and the rest are topics ("animals").
   TextColumn get tags => text().withDefault(const Constant(''))();

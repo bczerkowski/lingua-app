@@ -27,7 +27,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -39,14 +39,20 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await m.createTable(meanings);
           }
+          if (from < 4) {
+            await m.addColumn(cards, cards.note);
+          }
         },
         beforeOpen: (details) async {
-          // Defensive: guarantee the `gender` column and the `meanings` table
-          // exist even if a prior migration left the (web) DB inconsistent.
+          // Defensive: guarantee newer columns / tables exist even if a prior
+          // migration left the (web) DB inconsistent.
           final cols = await customSelect("PRAGMA table_info('cards')").get();
-          final hasGender = cols.any((r) => r.read<String>('name') == 'gender');
-          if (!hasGender) {
+          final names = cols.map((r) => r.read<String>('name')).toSet();
+          if (!names.contains('gender')) {
             await customStatement('ALTER TABLE cards ADD COLUMN gender TEXT');
+          }
+          if (!names.contains('note')) {
+            await customStatement('ALTER TABLE cards ADD COLUMN note TEXT');
           }
           // Ensure the meanings table exists AND has the expected columns;
           // recreate it if missing or malformed (e.g. a half-applied migration).

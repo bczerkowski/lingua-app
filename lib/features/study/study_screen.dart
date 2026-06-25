@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_services.dart';
+import '../../data/db/database.dart';
 import '../../services/srs/srs_scheduler.dart';
 import '../../theme.dart';
 import '../editor/card_editor_screen.dart';
@@ -23,6 +24,13 @@ class _StudyScreenState extends State<StudyScreen> {
   StudyController? _ctrl;
   bool _revealed = false;
   StudyDirection _direction = StudyDirection.both;
+  int? _studyCatId; // which category to study (null = all)
+
+  /// Reload the queue for the currently-selected category.
+  void _reload() {
+    setState(() => _revealed = false);
+    _ctrl?.load(catalogueId: _studyCatId);
+  }
 
   @override
   void initState() {
@@ -41,7 +49,7 @@ class _StudyScreenState extends State<StudyScreen> {
     if (_ctrl == null) {
       final s = AppServices.of(context);
       _ctrl = StudyController(s.db, s.srs);
-      if (widget.active) _ctrl!.load();
+      if (widget.active) _ctrl!.load(catalogueId: _studyCatId);
     }
   }
 
@@ -51,8 +59,7 @@ class _StudyScreenState extends State<StudyScreen> {
     // Reload the due queue each time the Study tab becomes visible, so newly
     // imported/edited/deleted cards are reflected (and stale ones drop out).
     if (widget.active && !old.active) {
-      setState(() => _revealed = false);
-      _ctrl?.load();
+      _reload();
     }
   }
 
@@ -91,24 +98,35 @@ class _StudyScreenState extends State<StudyScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload due cards',
-            onPressed: () {
-              setState(() => _revealed = false);
-              ctrl.load();
-            },
+            onPressed: _reload,
           ),
         ],
       ),
-      body: AnimatedBuilder(
-        animation: ctrl,
-        builder: (context, _) {
-          if (ctrl.loading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final card = ctrl.current;
-          if (card == null) {
-            return _DoneView(reviewed: ctrl.reviewed, onReload: ctrl.load);
-          }
-          return Column(
+      body: Column(
+        children: [
+          // Pick which category to study (always visible so it can be changed
+          // mid-session or after finishing one category).
+          _StudyCategoryBar(
+            db: services.db,
+            selectedId: _studyCatId,
+            onSelect: (id) {
+              setState(() => _studyCatId = id);
+              _reload();
+            },
+          ),
+          Expanded(
+            child: AnimatedBuilder(
+              animation: ctrl,
+              builder: (context, _) {
+                if (ctrl.loading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final card = ctrl.current;
+                if (card == null) {
+                  return _DoneView(
+                      reviewed: ctrl.reviewed, onReload: _reload);
+                }
+                return Column(
             children: [
               _ProgressBar(remaining: ctrl.remaining, reviewed: ctrl.reviewed),
               Expanded(
@@ -171,13 +189,16 @@ class _StudyScreenState extends State<StudyScreen> {
                     ),
                   );
                   setState(() => _revealed = false);
-                  await ctrl.load();
+                  await ctrl.load(catalogueId: _studyCatId);
                 },
               ),
               const SizedBox(height: 8),
             ],
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -193,6 +214,58 @@ class _StudyScreenState extends State<StudyScreen> {
           const SizedBox(width: 10),
           Text(label),
         ],
+      ),
+    );
+  }
+}
+
+/// Horizontal "All / category" chips to choose which category to study.
+/// Hidden when the user has no categories.
+class _StudyCategoryBar extends StatelessWidget {
+  final AppDatabase db;
+  final int? selectedId;
+  final ValueChanged<int?> onSelect;
+  const _StudyCategoryBar(
+      {required this.db, required this.selectedId, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Catalogue>>(
+      stream: db.watchCatalogues(),
+      builder: (context, snap) {
+        final cats = snap.data ?? const <Catalogue>[];
+        if (cats.isEmpty) return const SizedBox.shrink();
+        return SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              _pill('All', selectedId == null, () => onSelect(null)),
+              for (final c in cats)
+                _pill(c.name, selectedId == c.id, () => onSelect(c.id)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pill(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        showCheckmark: false,
+        labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppTheme.ink),
+        selectedColor: AppTheme.coral,
+        backgroundColor: AppTheme.surface,
+        side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
       ),
     );
   }
