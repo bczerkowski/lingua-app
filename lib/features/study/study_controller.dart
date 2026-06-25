@@ -46,6 +46,10 @@ class StudyController extends ChangeNotifier {
   StudyController(this.db, this.srs);
 
   final List<Flashcard> _queue = [];
+  // Extra Polish translations per card, preloaded with the queue so the study
+  // view never has to run a per-build async query (which was racy / came back
+  // empty right after revealing the card).
+  Map<int, List<Meaning>> _meanings = {};
   bool _loading = true;
   int _reviewed = 0;
 
@@ -59,12 +63,18 @@ class StudyController extends ChangeNotifier {
   bool get canUndo => _undoSnapshot != null;
   Flashcard? get current => _queue.isEmpty ? null : _queue.first;
 
+  /// Extra Polish translations for a card (empty if none / not loaded).
+  List<Meaning> meaningsOf(int cardId) => _meanings[cardId] ?? const [];
+
   Future<void> load({int? catalogueId}) async {
     _loading = true;
     notifyListeners();
+    final due = await db.dueCards(DateTime.now(), catalogueId: catalogueId);
     _queue
       ..clear()
-      ..addAll(await db.dueCards(DateTime.now(), catalogueId: catalogueId));
+      ..addAll(due);
+    // Preload every queued card's extra meanings in one query.
+    _meanings = await db.meaningsForCards([for (final c in due) c.id]);
     _reviewed = 0;
     _undoSnapshot = null;
     _loading = false;

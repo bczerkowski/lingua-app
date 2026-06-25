@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_services.dart';
-import '../../data/db/database.dart';
 import '../../services/srs/srs_scheduler.dart';
 import '../../theme.dart';
 import '../editor/card_editor_screen.dart';
@@ -120,18 +119,14 @@ class _StudyScreenState extends State<StudyScreen> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 560),
                       child: SingleChildScrollView(
-                        child: FutureBuilder<List<Meaning>>(
-                          key: ValueKey('meanings_${card.id}'),
-                          future: services.db.meaningsFor(card.id),
-                          builder: (context, msnap) => FlashcardView(
-                            key: ValueKey(card.id),
-                            card: card,
-                            extraMeanings: msnap.data ?? const [],
-                            direction: _direction,
-                            revealed: _revealed,
-                            onReveal: () => setState(() => _revealed = true),
-                            onSpeak: services.tts.speak,
-                          ),
+                        child: FlashcardView(
+                          key: ValueKey(card.id),
+                          card: card,
+                          extraMeanings: ctrl.meaningsOf(card.id),
+                          direction: _direction,
+                          revealed: _revealed,
+                          onReveal: () => setState(() => _revealed = true),
+                          onSpeak: services.tts.speak,
                         ),
                       ),
                     ),

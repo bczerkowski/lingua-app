@@ -256,6 +256,21 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(m) => OrderingTerm(expression: m.sortOrder)]))
           .get();
 
+  /// Meanings for many cards at once, grouped by cardId (used to preload the
+  /// study queue so the card view never depends on a per-build async query).
+  Future<Map<int, List<Meaning>>> meaningsForCards(List<int> ids) async {
+    if (ids.isEmpty) return {};
+    final rows = await (select(meanings)
+          ..where((m) => m.cardId.isIn(ids))
+          ..orderBy([(m) => OrderingTerm(expression: m.sortOrder)]))
+        .get();
+    final map = <int, List<Meaning>>{};
+    for (final m in rows) {
+      (map[m.cardId] ??= []).add(m);
+    }
+    return map;
+  }
+
   /// Replace all additional meanings for a card with [items] (each is a
   /// {polish, definition, example} record). Empty entries are skipped.
   Future<void> replaceMeanings(
