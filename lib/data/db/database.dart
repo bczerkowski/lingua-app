@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import 'connection/connection.dart';
@@ -283,6 +285,155 @@ class AppDatabase extends _$AppDatabase {
       (map[m.cardId] ??= []).add(m);
     }
     return map;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Backup: export / import the whole deck as one JSON document. Used to move a
+  // deck between devices (e.g. computer -> phone) and as a full backup.
+  // ---------------------------------------------------------------------------
+
+  /// Serialize every catalogue, card (images included, base64-encoded) and
+  /// extra meaning into a single JSON string.
+  Future<String> exportDeck() async {
+    final cats = await select(catalogues).get();
+    final cardRows = await select(cards).get();
+    final meaningRows = await select(meanings).get();
+    final doc = {
+      'app': 'lexicon',
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'catalogues': [
+        for (final c in cats)
+          {
+            'id': c.id,
+            'name': c.name,
+            'color': c.color,
+            'createdAt': c.createdAt.millisecondsSinceEpoch,
+          }
+      ],
+      'cards': [
+        for (final c in cardRows)
+          {
+            'id': c.id,
+            'polish': c.polish,
+            'english': c.english,
+            'exampleSentence': c.exampleSentence,
+            'englishDefinition': c.englishDefinition,
+            'note': c.note,
+            'tags': c.tags,
+            'gender': c.gender,
+            'catalogueId': c.catalogueId,
+            'imageBytes':
+                c.imageBytes == null ? null : base64Encode(c.imageBytes!),
+            'imageSource': c.imageSource,
+            'isCard': c.isCard,
+            'createdAt': c.createdAt.millisecondsSinceEpoch,
+            'updatedAt': c.updatedAt.millisecondsSinceEpoch,
+            'easeFactor': c.easeFactor,
+            'intervalDays': c.intervalDays,
+            'repetitions': c.repetitions,
+            'lapses': c.lapses,
+            'learningStep': c.learningStep,
+            'dueDate': c.dueDate?.millisecondsSinceEpoch,
+            'suspended': c.suspended,
+          }
+      ],
+      'meanings': [
+        for (final m in meaningRows)
+          {
+            'id': m.id,
+            'cardId': m.cardId,
+            'polishTranslation': m.polishTranslation,
+            'englishDefinition': m.englishDefinition,
+            'exampleSentence': m.exampleSentence,
+            'sortOrder': m.sortOrder,
+          }
+      ],
+    };
+    return jsonEncode(doc);
+  }
+
+  /// Replace the entire deck with the contents of a backup produced by
+  /// [exportDeck]. Returns how many cards/catalogues were restored. Throws a
+  /// [FormatException] on a file that isn't a Lexicon backup.
+  Future<({int cards, int catalogues})> importDeck(String jsonStr) async {
+    final dynamic parsed = jsonDecode(jsonStr);
+    if (parsed is! Map<String, dynamic> || parsed['app'] != 'lexicon') {
+      throw const FormatException('This file is not a Lexicon backup.');
+    }
+    final catList = (parsed['catalogues'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final cardList =
+        (parsed['cards'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final meaningList =
+        (parsed['meanings'] as List? ?? const []).cast<Map<String, dynamic>>();
+
+    DateTime ms(Object? v) =>
+        DateTime.fromMillisecondsSinceEpoch((v as num).toInt());
+
+    await transaction(() async {
+      await delete(meanings).go();
+      await delete(cards).go();
+      await delete(catalogues).go();
+      await batch((b) {
+        for (final c in catList) {
+          b.insert(
+              catalogues,
+              CataloguesCompanion(
+                id: Value(c['id'] as int),
+                name: Value(c['name'] as String),
+                color: Value(c['color'] as String?),
+                createdAt: Value(ms(c['createdAt'])),
+              ),
+              mode: InsertMode.insertOrReplace);
+        }
+        for (final c in cardList) {
+          final img = c['imageBytes'] as String?;
+          b.insert(
+              cards,
+              CardsCompanion(
+                id: Value(c['id'] as int),
+                polish: Value(c['polish'] as String),
+                english: Value(c['english'] as String),
+                exampleSentence: Value(c['exampleSentence'] as String?),
+                englishDefinition: Value(c['englishDefinition'] as String?),
+                note: Value(c['note'] as String?),
+                tags: Value(c['tags'] as String? ?? ''),
+                gender: Value(c['gender'] as String?),
+                catalogueId: Value(c['catalogueId'] as int?),
+                imageBytes: Value(img == null ? null : base64Decode(img)),
+                imageSource: Value(c['imageSource'] as String?),
+                isCard: Value(c['isCard'] as bool? ?? false),
+                createdAt: Value(ms(c['createdAt'])),
+                updatedAt: Value(ms(c['updatedAt'])),
+                easeFactor: Value((c['easeFactor'] as num).toDouble()),
+                intervalDays: Value((c['intervalDays'] as num).toInt()),
+                repetitions: Value((c['repetitions'] as num).toInt()),
+                lapses: Value((c['lapses'] as num).toInt()),
+                learningStep: Value((c['learningStep'] as num).toInt()),
+                dueDate:
+                    Value(c['dueDate'] == null ? null : ms(c['dueDate'])),
+                suspended: Value(c['suspended'] as bool? ?? false),
+              ),
+              mode: InsertMode.insertOrReplace);
+        }
+        for (final m in meaningList) {
+          b.insert(
+              meanings,
+              MeaningsCompanion(
+                id: Value(m['id'] as int),
+                cardId: Value(m['cardId'] as int),
+                polishTranslation:
+                    Value(m['polishTranslation'] as String? ?? ''),
+                englishDefinition: Value(m['englishDefinition'] as String?),
+                exampleSentence: Value(m['exampleSentence'] as String?),
+                sortOrder: Value((m['sortOrder'] as num?)?.toInt() ?? 0),
+              ),
+              mode: InsertMode.insertOrReplace);
+        }
+      });
+    });
+    return (cards: cardList.length, catalogues: catList.length);
   }
 
   /// Replace all additional meanings for a card with [items] (each is a

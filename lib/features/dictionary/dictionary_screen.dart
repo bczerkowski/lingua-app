@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -703,6 +705,8 @@ class _ManageMenu extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const StatsScreen()),
           );
         }
+        if (v == 'export_deck') _exportDeck(context);
+        if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
         if (v == 'reset') _confirmReset(context);
@@ -725,6 +729,26 @@ class _ManageMenu extends StatelessWidget {
             title: Text('Manage categories'),
           ),
         ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'export_deck',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_download_outlined),
+            title: Text('Back up / export deck'),
+            subtitle: Text('Whole deck to a file (move to phone)'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'import_deck',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_upload_outlined),
+            title: Text('Restore / import deck'),
+            subtitle: Text('Load a backup file (replaces deck)'),
+          ),
+        ),
+        PopupMenuDivider(),
         PopupMenuItem(
           value: 'import',
           child: ListTile(
@@ -855,6 +879,68 @@ class _ManageMenu extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Download is only available on the web app')),
       );
+    }
+  }
+
+  /// Export the whole deck to a JSON file (downloads in the browser / PWA).
+  Future<void> _exportDeck(BuildContext context) async {
+    try {
+      final json = await db.exportDeck();
+      final stamp = DateTime.now().toIso8601String().split('T').first;
+      downloadText('lexicon-backup-$stamp.json', json,
+          mime: 'application/json');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Deck exported — check your downloads, then '
+                  'import the file on your other device.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  /// Restore the whole deck from a backup file made by [_exportDeck].
+  Future<void> _importDeck(BuildContext context) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final bytes = picked.files.single.bytes;
+    if (bytes == null || !context.mounted) return;
+
+    final ok = await _confirm(
+      context,
+      'Restore from backup?',
+      'This replaces the deck on THIS device with the contents of the backup '
+          'file. Any cards currently on this device will be removed.',
+    );
+    if (ok != true) return;
+
+    try {
+      final res = await db.importDeck(utf8.decode(bytes));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Restored ${res.cards} '
+                  '${res.cards == 1 ? 'card' : 'cards'}'
+                  '${res.catalogues > 0 ? ' in ${res.catalogues} '
+                      '${res.catalogues == 1 ? 'category' : 'categories'}' : ''}')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
     }
   }
 
