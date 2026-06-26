@@ -145,14 +145,19 @@ class _StudyScreenState extends State<StudyScreen> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 560),
                       child: SingleChildScrollView(
-                        child: FlashcardView(
-                          key: ValueKey(card.id),
-                          card: card,
-                          extraMeanings: ctrl.meaningsOf(card.id),
-                          direction: _direction,
-                          revealed: _revealed,
-                          onReveal: () => setState(() => _revealed = true),
-                          onSpeak: services.tts.speak,
+                        // SelectionArea makes the card's text highlightable and
+                        // copyable (drag to select, then Ctrl/Cmd+C or
+                        // right-click → Copy).
+                        child: SelectionArea(
+                          child: FlashcardView(
+                            key: ValueKey(card.id),
+                            card: card,
+                            extraMeanings: ctrl.meaningsOf(card.id),
+                            direction: _direction,
+                            revealed: _revealed,
+                            onReveal: () => setState(() => _revealed = true),
+                            onSpeak: services.tts.speak,
+                          ),
                         ),
                       ),
                     ),
