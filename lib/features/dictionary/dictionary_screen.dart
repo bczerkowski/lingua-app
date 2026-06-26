@@ -595,10 +595,26 @@ class _EntryRow extends StatelessWidget {
             child: Icon(Icons.volume_up_rounded, size: 19, color: AppTheme.muted),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
-        ),
+        // A small thumbnail of the card's image sits between the two terms
+        // (falls back to a dot when the card has no image).
+        if (card.imageBytes != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(card.imageBytes!,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true),
+            ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child:
+                Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
+          ),
         Text(card.polish,
             style: const TextStyle(
                 fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
