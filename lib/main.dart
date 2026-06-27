@@ -41,21 +41,25 @@ Future<void> main() async {
   // Seed in the background so a slow/failed DB open never blocks first paint.
   final seeded = Seeder(db).seedIfNeeded();
 
-  // Bring up cloud sync (best-effort: the app works fully offline if this
-  // fails, e.g. no network at launch).
   final sync = SyncService(db);
-  if (SupabaseConfig.isConfigured) {
-    try {
-      await Supabase.initialize(
-        url: SupabaseConfig.url,
-        // ignore: deprecated_member_use
-        anonKey: SupabaseConfig.anonKey,
-      );
-      sync.init();
-    } catch (_) {/* offline / misconfigured -> stay local-only */}
-  }
 
+  // Draw the app immediately. Cloud sync is brought up in the BACKGROUND so a
+  // slow/hanging Supabase init can never block first paint (which left a blank
+  // screen). The app is fully usable offline; sync activates once it connects.
   runApp(LinguaApp(services: AppServices(db: db, sync: sync), seeded: seeded));
+
+  if (SupabaseConfig.isConfigured) {
+    Future(() async {
+      try {
+        await Supabase.initialize(
+          url: SupabaseConfig.url,
+          // ignore: deprecated_member_use
+          anonKey: SupabaseConfig.anonKey,
+        );
+        sync.init();
+      } catch (_) {/* offline / misconfigured -> stay local-only */}
+    });
+  }
 }
 
 class LinguaApp extends StatelessWidget {
