@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_services.dart';
 import 'data/db/database.dart';
 import 'data/seed.dart';
 import 'features/home/home_screen.dart';
+import 'services/sync/supabase_config.dart';
+import 'services/sync/sync_service.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -38,7 +41,21 @@ Future<void> main() async {
   // Seed in the background so a slow/failed DB open never blocks first paint.
   final seeded = Seeder(db).seedIfNeeded();
 
-  runApp(LinguaApp(services: AppServices(db: db), seeded: seeded));
+  // Bring up cloud sync (best-effort: the app works fully offline if this
+  // fails, e.g. no network at launch).
+  final sync = SyncService(db);
+  if (SupabaseConfig.isConfigured) {
+    try {
+      await Supabase.initialize(
+        url: SupabaseConfig.url,
+        // ignore: deprecated_member_use
+        anonKey: SupabaseConfig.anonKey,
+      );
+      sync.init();
+    } catch (_) {/* offline / misconfigured -> stay local-only */}
+  }
+
+  runApp(LinguaApp(services: AppServices(db: db, sync: sync), seeded: seeded));
 }
 
 class LinguaApp extends StatelessWidget {
