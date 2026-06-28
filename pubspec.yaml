@@ -40,9 +40,6 @@ dependencies:
   # Browser APIs for the CSV-template download (web only).
   web: ^1.1.0
 
-  # Cloud sync backend (auth + Postgres + realtime).
-  supabase_flutter: ^2.8.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

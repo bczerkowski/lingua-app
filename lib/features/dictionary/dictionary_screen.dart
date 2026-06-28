@@ -14,7 +14,6 @@ import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
 import '../stats/stats_screen.dart';
-import '../sync/sync_screen.dart';
 
 class DictionaryScreen extends StatefulWidget {
   final VoidCallback onStudyTap;
@@ -712,11 +711,6 @@ class _ManageMenu extends StatelessWidget {
       icon: const Icon(Icons.more_vert, color: AppTheme.muted),
       tooltip: 'Manage data',
       onSelected: (v) {
-        if (v == 'sync') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SyncScreen()),
-          );
-        }
         if (v == 'categories') {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const CatalogueScreen()),
@@ -735,16 +729,6 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'clear') _confirmClear(context);
       },
       itemBuilder: (_) => const [
-        PopupMenuItem(
-          value: 'sync',
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.cloud_sync_outlined),
-            title: Text('Cloud sync'),
-            subtitle: Text('Sign in to sync across devices'),
-          ),
-        ),
-        PopupMenuDivider(),
         PopupMenuItem(
           value: 'stats',
           child: ListTile(

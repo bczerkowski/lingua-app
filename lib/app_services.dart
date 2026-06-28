@@ -4,7 +4,6 @@ import 'package:flutter/widgets.dart';
 import 'data/db/database.dart';
 import 'services/ai/image_gen_service.dart';
 import 'services/srs/srs_scheduler.dart';
-import 'services/sync/sync_service.dart';
 import 'services/tts/tts_service.dart';
 
 /// Backend endpoint for AI image generation. Empty = demo mode (manual image
@@ -19,11 +18,9 @@ class AppServices {
   final SrsScheduler srs;
   final TtsService tts;
   final ImageGenProvider imageGen;
-  final SyncService sync;
 
   AppServices({
     required this.db,
-    required this.sync,
     SrsScheduler? srs,
     TtsService? tts,
     ImageGenProvider? imageGen,

@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_services.dart';
 import 'data/db/database.dart';
 import 'data/seed.dart';
 import 'features/home/home_screen.dart';
-import 'services/sync/supabase_config.dart';
-import 'services/sync/sync_service.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -41,25 +38,7 @@ Future<void> main() async {
   // Seed in the background so a slow/failed DB open never blocks first paint.
   final seeded = Seeder(db).seedIfNeeded();
 
-  final sync = SyncService(db);
-
-  // Draw the app immediately. Cloud sync is brought up in the BACKGROUND so a
-  // slow/hanging Supabase init can never block first paint (which left a blank
-  // screen). The app is fully usable offline; sync activates once it connects.
-  runApp(LinguaApp(services: AppServices(db: db, sync: sync), seeded: seeded));
-
-  if (SupabaseConfig.isConfigured) {
-    Future(() async {
-      try {
-        await Supabase.initialize(
-          url: SupabaseConfig.url,
-          // ignore: deprecated_member_use
-          anonKey: SupabaseConfig.anonKey,
-        );
-        sync.init();
-      } catch (_) {/* offline / misconfigured -> stay local-only */}
-    });
-  }
+  runApp(LinguaApp(services: AppServices(db: db), seeded: seeded));
 }
 
 class LinguaApp extends StatelessWidget {

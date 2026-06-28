@@ -44,9 +44,6 @@
   <script>
     window.addEventListener('load', function () {
       _flutter.loader.load({
-        // Serve CanvasKit from the app's own bundle instead of Google's CDN,
-        // so the engine still initializes if the CDN is blocked/unreachable.
-        config: { canvasKitBaseUrl: "canvaskit/" },
         onEntrypointLoaded: async function (engineInitializer) {
           const appRunner = await engineInitializer.initializeEngine();
           await appRunner.runApp();
