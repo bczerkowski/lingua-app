@@ -22,25 +22,6 @@
   <script>
     {{flutter_build_config}}
   </script>
-  <script>
-    // We don't use a service worker, and main.dart.js has a stable filename, so
-    // the browser can cache it indefinitely and serve a stale build after a
-    // deploy. Append a per-build version to the entrypoint URL so a normal
-    // reload always fetches the latest build (and still caches between builds).
-    (function () {
-      try {
-        // Flutter replaces this token with a quoted, per-build version string.
-        var v = {{flutter_service_worker_version}};
-        if (!v || v === "null") v = "" + Date.now();
-        var builds = (window._flutter && _flutter.buildConfig && _flutter.buildConfig.builds) || [];
-        for (var i = 0; i < builds.length; i++) {
-          if (builds[i] && builds[i].mainJsPath) {
-            builds[i].mainJsPath += (builds[i].mainJsPath.indexOf("?") < 0 ? "?" : "&") + "v=" + v;
-          }
-        }
-      } catch (e) {}
-    })();
-  </script>
 </head>
 <body>
   <script>
@@ -63,6 +44,9 @@
   <script>
     window.addEventListener('load', function () {
       _flutter.loader.load({
+        // Serve CanvasKit from the app's own bundle instead of Google's CDN,
+        // so the engine still initializes if the CDN is blocked/unreachable.
+        config: { canvasKitBaseUrl: "canvaskit/" },
         onEntrypointLoaded: async function (engineInitializer) {
           const appRunner = await engineInitializer.initializeEngine();
           await appRunner.runApp();
