@@ -25,6 +25,10 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          # Pinned to the version verified locally. `channel: stable` floats to
+          # the newest stable, which shipped a web-engine change that
+          # white-screened this build; pin to keep CI == verified build.
+          flutter-version: 3.44.2
           channel: stable
           cache: true
 
