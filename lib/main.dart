@@ -4,6 +4,7 @@ import 'app_services.dart';
 import 'data/db/database.dart';
 import 'data/seed.dart';
 import 'features/home/home_screen.dart';
+import 'services/sync/sync_service.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -38,7 +39,18 @@ Future<void> main() async {
   // Seed in the background so a slow/failed DB open never blocks first paint.
   final seeded = Seeder(db).seedIfNeeded();
 
-  runApp(LinguaApp(services: AppServices(db: db), seeded: seeded));
+  final sync = SyncService(db);
+
+  // Draw the app first; sync is plain HTTP (no plugins) and only does anything
+  // once the user has signed in. Restoring a saved session happens in the
+  // background and can never block or break first paint.
+  runApp(LinguaApp(services: AppServices(db: db, sync: sync), seeded: seeded));
+
+  Future(() async {
+    try {
+      await sync.init();
+    } catch (_) {/* stay local-only if restore fails */}
+  });
 }
 
 class LinguaApp extends StatelessWidget {
