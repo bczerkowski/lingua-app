@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\ae4770\\TODAY\\tool\\serve.exe",
       "runtimeArgs": ["8099"],
       "port": 8099
+    },
+    {
+      "name": "miejscownik",
+      "runtimeExecutable": "C:\\flutter\\bin\\dart.bat",
+      "runtimeArgs": ["C:\\Users\\ae4770\\Miejscownik\\tool\\serve.dart", "8077"],
+      "port": 8077
     }
   ]
 }

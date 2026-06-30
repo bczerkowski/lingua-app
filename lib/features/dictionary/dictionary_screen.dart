@@ -10,6 +10,7 @@ import '../../data/db/database.dart';
 import '../../data/seed.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
+import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
@@ -701,6 +702,45 @@ class _EntryRow extends StatelessWidget {
   }
 }
 
+/// Cloud-sync status icon in the header — same behaviour as the Moja Kuchnia
+/// and Miejscownik apps: reflects the live sync state and opens the sync screen.
+class _SyncButton extends StatelessWidget {
+  const _SyncButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = AppServices.of(context).sync;
+    return AnimatedBuilder(
+      animation: sync,
+      builder: (context, _) {
+        final IconData icon;
+        final Color color;
+        switch (sync.state) {
+          case SyncState.syncing:
+            icon = Icons.cloud_sync_outlined;
+            color = AppTheme.coral;
+          case SyncState.synced:
+            icon = Icons.cloud_done_outlined;
+            color = const Color(0xFF2E7D32);
+          case SyncState.error:
+            icon = Icons.cloud_off_outlined;
+            color = const Color(0xFFB3261E);
+          case SyncState.offline:
+            icon = Icons.cloud_outlined;
+            color = AppTheme.muted;
+        }
+        return IconButton(
+          icon: Icon(icon, color: color),
+          tooltip: 'Cloud sync',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SyncScreen()),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Overflow menu with self-service data recovery actions.
 class _ManageMenu extends StatelessWidget {
   final AppDatabase db;
@@ -1073,6 +1113,7 @@ class _Header extends StatelessWidget {
                         letterSpacing: 1.8,
                         color: AppTheme.muted)),
               ),
+              const _SyncButton(),
               _ManageMenu(db: db),
             ],
           ),
