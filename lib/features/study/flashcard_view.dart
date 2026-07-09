@@ -105,7 +105,7 @@ class _CardFace extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -182,23 +182,24 @@ class _TargetLine extends StatelessWidget {
           child: Text(card.english,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 27,
+                  fontSize: 21,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
                   color: Colors.black)),
         ),
         IconButton(
-          icon: const Icon(Icons.volume_up_rounded, size: 20),
+          icon: const Icon(Icons.volume_up_rounded, size: 18),
           color: scheme.primary,
           tooltip: 'Hear English',
+          visualDensity: VisualDensity.compact,
           onPressed: () => onSpeak(card.english, 'en-US'),
         ),
-        Text('·', style: TextStyle(fontSize: 24, color: Colors.grey.shade300)),
+        Text('·', style: TextStyle(fontSize: 20, color: Colors.grey.shade300)),
         Flexible(
           child: Text(polish,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 24,
+                  fontSize: 19,
                   fontWeight: FontWeight.w500,
                   color: Color(0xFF3A3833))),
         ),
@@ -207,7 +208,9 @@ class _TargetLine extends StatelessWidget {
   }
 }
 
-/// A single big prompt word (used on the front when direction hides one side).
+/// A single prompt word (used on the front when direction hides one side).
+/// The text auto-shrinks to fit one line, so a long word or phrase stays
+/// compact instead of breaking into oversized stacked letters.
 class _PromptWord extends StatelessWidget {
   final String text;
   final VoidCallback? onSpeak;
@@ -220,13 +223,17 @@ class _PromptWord extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Flexible(
-          child: Text(text,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5,
-                  color: Colors.black)),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(text,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                    color: Colors.black)),
+          ),
         ),
         if (onSpeak != null)
           IconButton(
@@ -270,14 +277,14 @@ class _Front extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _TagHeader(card: card),
-        const SizedBox(height: 32),
+        const SizedBox(height: 22),
         _prompt(),
-        const SizedBox(height: 32),
+        const SizedBox(height: 20),
         Text(
           direction == StudyDirection.both
               ? 'Recall the meaning'
               : 'Recall the translation',
-          style: const TextStyle(color: AppTheme.muted, fontSize: 13),
+          style: const TextStyle(color: AppTheme.muted, fontSize: 12.5),
         ),
       ],
     );
