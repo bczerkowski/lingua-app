@@ -22,8 +22,8 @@ class SyncService extends ChangeNotifier {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: SupabaseConfig.url,
     headers: {'apikey': SupabaseConfig.anonKey},
-    sendTimeout: const Duration(seconds: 20),
-    receiveTimeout: const Duration(seconds: 30),
+    sendTimeout: const Duration(seconds: 60),
+    receiveTimeout: const Duration(seconds: 60),
   ));
 
   SyncService(this.db);
@@ -187,6 +187,18 @@ class SyncService extends ChangeNotifier {
     );
   }
 
+  /// Cheap poll: only the timestamp, never the (possibly multi-MB) deck body.
+  /// The full deck is fetched only when this shows the cloud is newer.
+  Future<DateTime?> _fetchCloudMeta() async {
+    await _ensureToken();
+    final r = await _dio.get('/rest/v1/decks',
+        queryParameters: {'select': 'updated_at'},
+        options: Options(headers: _restHeaders));
+    final list = (r.data as List);
+    if (list.isEmpty) return null;
+    return DateTime.parse((list.first as Map)['updated_at'] as String).toUtc();
+  }
+
   Future<void> _reconcile({required bool interactive}) async {
     final localCount = await db.countCards();
     final cloud = await _fetchCloud();
@@ -327,11 +339,15 @@ class SyncService extends ChangeNotifier {
     _poll = Timer.periodic(const Duration(seconds: 15), (_) async {
       if (_applyingRemote || _state == SyncState.syncing) return;
       try {
-        final c = await _fetchCloud();
-        if (c.updatedAt != null &&
-            (_lastSyncedAt == null || c.updatedAt!.isAfter(_lastSyncedAt!))) {
-          await _applyRemote(c.data!, c.updatedAt!);
-          _set(SyncState.synced);
+        // Cheap check first: only pull the full deck body if it actually changed.
+        final at = await _fetchCloudMeta();
+        if (at != null &&
+            (_lastSyncedAt == null || at.isAfter(_lastSyncedAt!))) {
+          final c = await _fetchCloud();
+          if (c.data != null) {
+            await _applyRemote(c.data!, c.updatedAt!);
+            _set(SyncState.synced);
+          }
         }
       } catch (_) {/* transient network issue — keep current state */}
     });
