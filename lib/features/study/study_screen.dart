@@ -28,7 +28,10 @@ class StudyScreen extends StatefulWidget {
 class _StudyScreenState extends State<StudyScreen> {
   StudyController? _ctrl;
   bool _revealed = false;
-  StudyDirection _direction = StudyDirection.both;
+  // Default to a real flashcard: show ONE side as the prompt and hide the other
+  // until "Show Answer". ("Show both" stays available in the menu for passive
+  // review, but it must not be the default or the answer leaks on the front.)
+  StudyDirection _direction = StudyDirection.englishToPolish;
   int? _studyCatId; // which category to study (null = all)
 
   /// Reload the queue for the currently-selected category.
