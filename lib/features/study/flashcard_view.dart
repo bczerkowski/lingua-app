@@ -6,6 +6,18 @@ import '../../data/db/database.dart';
 import '../../theme.dart';
 import 'study_controller.dart';
 
+/// Picks a font size that shrinks as the text gets longer, so long example
+/// sentences / definitions stay compact instead of dominating the card.
+/// Full [max] up to [from] characters, linearly down to [min] by [to].
+double _fitSize(String text,
+    {required double max, required double min, int from = 90, int to = 280}) {
+  final len = text.characters.length;
+  if (len <= from) return max;
+  if (len >= to) return min;
+  final t = (len - from) / (to - from);
+  return max - (max - min) * t;
+}
+
 /// A single flashcard whose reveal state is controlled by the parent.
 class FlashcardView extends StatefulWidget {
   final Flashcard card;
@@ -315,8 +327,11 @@ class _Back extends StatelessWidget {
             children: [
               Expanded(
                 child: Text('“${card.exampleSentence}”',
-                    style: const TextStyle(
-                        fontStyle: FontStyle.italic, fontSize: 16, height: 1.4)),
+                    style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        fontSize: _fitSize(card.exampleSentence!,
+                            max: 16, min: 12.5),
+                        height: 1.4)),
               ),
               IconButton(
                 icon: const Icon(Icons.volume_up, size: 18),
@@ -330,7 +345,10 @@ class _Back extends StatelessWidget {
         if (card.englishDefinition != null &&
             card.englishDefinition!.isNotEmpty)
           Text(card.englishDefinition!,
-              style: const TextStyle(fontSize: 15, color: Colors.black)),
+              style: TextStyle(
+                  fontSize: _fitSize(card.englishDefinition!, max: 15, min: 12),
+                  height: 1.35,
+                  color: Colors.black)),
         const SizedBox(height: 18),
         _ImageAnchor(card: card),
         if (card.note != null && card.note!.trim().isNotEmpty)
