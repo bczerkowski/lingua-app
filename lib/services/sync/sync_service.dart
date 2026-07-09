@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -203,7 +204,8 @@ class SyncService extends ChangeNotifier {
         conflictResolver != null) {
       final keepCloud = await conflictResolver!(localCount);
       if (keepCloud) {
-        await _applyRemote(cloud.data!, cloud.updatedAt!);
+        // User explicitly chose the cloud copy — allow the replace.
+        await _applyRemote(cloud.data!, cloud.updatedAt!, force: true);
       } else {
         await _push(force: true);
       }
@@ -214,6 +216,17 @@ class SyncService extends ChangeNotifier {
       await _applyRemote(cloud.data!, cloud.updatedAt!);
     } else if (dirty) {
       await _push(force: true);
+    }
+  }
+
+  /// Number of cards inside a deck JSON document (backup format). Returns -1 if
+  /// the document can't be parsed, so callers treat it as "unknown, don't block".
+  int _deckCardCount(String data) {
+    try {
+      final cards = (jsonDecode(data) as Map)['cards'];
+      return cards is List ? cards.length : -1;
+    } catch (_) {
+      return -1;
     }
   }
 
@@ -240,11 +253,32 @@ class SyncService extends ChangeNotifier {
     _set(SyncState.synced);
   }
 
-  Future<void> _applyRemote(String data, DateTime updatedAt) async {
+  Future<void> _applyRemote(String data, DateTime updatedAt,
+      {bool force = false}) async {
     if (data == _lastSyncedData) {
       _lastSyncedAt = updatedAt;
       await _writeLastAt(updatedAt);
       return;
+    }
+    // SAFETY GUARD: never let a much smaller cloud deck silently wipe a bigger
+    // local one (this is exactly how a stale sample deck once ate the whole
+    // collection). If applying the remote would delete a large share of local
+    // cards, keep the local deck instead and push it up as the source of truth.
+    // Explicit user actions (first-run "keep cloud") pass force:true to bypass.
+    if (!force) {
+      final localCount = await db.countCards();
+      final remoteCount = _deckCardCount(data);
+      final lost = localCount - remoteCount;
+      final destructive = remoteCount >= 0 &&
+          localCount > 0 &&
+          lost >= 8 &&
+          remoteCount < localCount * 0.7;
+      if (destructive) {
+        await _writeDirty(true);
+        await _push(force: true);
+        _set(SyncState.synced, 'Kept this device’s fuller deck ($localCount)');
+        return;
+      }
     }
     _applyingRemote = true;
     try {
