@@ -119,7 +119,8 @@ class WordAssistService {
     try {
       r = await _dio.post(
         'https://generativelanguage.googleapis.com/v1beta/models/'
-        'gemini-2.5-flash:generateContent',
+        // 2.0-flash has much higher free-tier request limits than 2.5-flash.
+        'gemini-2.0-flash:generateContent',
         data: {
           'contents': [
             {
@@ -139,6 +140,11 @@ class WordAssistService {
     }
 
     final data = r.data;
+    if (r.statusCode == 429) {
+      final wait = _retryDelay(data);
+      throw 'rate limit — wait ${wait ?? "~1 min"} and try again '
+          '(the free tier allows only a few requests per minute).';
+    }
     if (r.statusCode != 200) {
       final m = data is Map && data['error'] is Map
           ? (data['error'] as Map)['message']
@@ -174,6 +180,19 @@ class WordAssistService {
     }
     final s = buf.toString();
     return s.isEmpty ? null : s;
+  }
+
+  /// Pulls the "retryDelay" (e.g. "50s") from a 429 error's details, if present.
+  String? _retryDelay(dynamic data) {
+    if (data is! Map || data['error'] is! Map) return null;
+    final details = (data['error'] as Map)['details'];
+    if (details is! List) return null;
+    for (final d in details) {
+      if (d is Map && d['retryDelay'] is String) {
+        return '~${d['retryDelay']}';
+      }
+    }
+    return null;
   }
 
   String? _finish(dynamic data) {
