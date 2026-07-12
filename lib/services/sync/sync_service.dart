@@ -242,13 +242,32 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> _push({bool force = false}) async {
+  Future<void> _push({bool force = false, bool userInitiated = false}) async {
     final json = await db.exportDeck();
     if (!force && json == _lastSyncedData) {
       _set(SyncState.synced);
       return;
     }
     await _ensureToken();
+    // SAFETY GUARD (push side): never let a suspiciously small local deck — the
+    // classic case is a fresh install's 10-card sample deck — clobber a much
+    // bigger deck already in the cloud. If we're about to push a tiny deck,
+    // first check the cloud; if the cloud is far bigger, adopt it instead.
+    // Only an explicit user action (userInitiated) may overwrite a bigger cloud.
+    if (!userInitiated) {
+      final localCount = _deckCardCount(json);
+      if (localCount >= 0 && localCount <= 20) {
+        final cloud = await _fetchCloud();
+        final cloudCount =
+            cloud.data == null ? -1 : _deckCardCount(cloud.data!);
+        if (cloudCount - localCount >= 8 && localCount < cloudCount * 0.7) {
+          _lastSyncedData = null; // ensure the adopt actually re-imports
+          await _applyRemote(cloud.data!, cloud.updatedAt!, force: true);
+          _set(SyncState.synced, 'Kept the fuller cloud deck ($cloudCount)');
+          return;
+        }
+      }
+    }
     final now = DateTime.now().toUtc();
     await _dio.post('/rest/v1/decks',
         data: {
