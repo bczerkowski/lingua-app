@@ -86,7 +86,7 @@ class WordAssistService {
 
   /// A livelier, smarter example sentence via Gemini — understands phrasal
   /// verbs, idioms and expressions, unlike the single-word dictionary.
-  Future<String?> aiExample(String english) => _gemini(
+  Future<String?> aiExample(String english) => _generate(
         "You are helping build a language-learning flashcard. The English term "
         "is \"$english\" — it may be a single word, a phrasal verb, an idiom, "
         "or an expression (sometimes with a placeholder like 'something' or "
@@ -98,7 +98,7 @@ class WordAssistService {
 
   /// A clear learner-friendly definition via Gemini — also handles phrasal
   /// verbs, idioms and expressions the dictionary can't.
-  Future<String?> aiDefinition(String english) => _gemini(
+  Future<String?> aiDefinition(String english) => _generate(
         "Define the English term \"$english\" for a language learner. It may be "
         "a single word, a phrasal verb, an idiom, or an expression. Explain "
         "clearly what it means and how it is used, in 1 to 2 short sentences of "
@@ -106,10 +106,40 @@ class WordAssistService {
         "do not repeat the term as a heading.",
       );
 
+  /// Generates text with the best available engine: Gemini first (higher
+  /// quality) when a key is set, then the free keyless Pollinations text model
+  /// as a fallback (so rate limits / no key don't block generation).
+  Future<String?> _generate(String prompt) async {
+    try {
+      final g = await _gemini(prompt);
+      if (g != null && g.isNotEmpty) return g;
+    } catch (_) {/* Gemini error (e.g. rate limit) → fall back */}
+    return _pollinationsText(prompt);
+  }
+
+  /// Free, keyless LLM text via pollinations.ai. Returns null on failure.
+  Future<String?> _pollinationsText(String prompt) async {
+    try {
+      final r = await _dio.get<String>(
+        'https://text.pollinations.ai/${Uri.encodeComponent(prompt)}',
+        queryParameters: {'model': 'openai'},
+        options: Options(
+          responseType: ResponseType.plain,
+          receiveTimeout: const Duration(seconds: 45),
+        ),
+      );
+      final t = r.data?.trim();
+      if (t == null || t.isEmpty) return null;
+      final cleaned = _clean(t);
+      return cleaned.isEmpty ? null : cleaned;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Calls Gemini text (free on the AI Studio free tier). Returns null ONLY
-  /// when no key is saved (so callers fall back to the dictionary). Throws a
-  /// short descriptive error on API failure / empty output so the UI can show
-  /// exactly what went wrong instead of a generic message.
+  /// when no key is saved (so callers fall back). Throws a short descriptive
+  /// error on API failure / empty output.
   Future<String?> _gemini(String prompt) async {
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
