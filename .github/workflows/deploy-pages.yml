@@ -38,7 +38,9 @@ jobs:
       - run: dart run build_runner build --delete-conflicting-outputs
 
       # Project Pages are served from /<repo>/, so the base href must match.
-      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+      # --pwa-strategy=none disables the service worker so deploys aren't hidden
+      # behind an aggressive offline cache (the app is online-first anyway).
+      - run: flutter build web --release --pwa-strategy=none --base-href "/${{ github.event.repository.name }}/"
 
       - uses: actions/upload-pages-artifact@v3
         with:
