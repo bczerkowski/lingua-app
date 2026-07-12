@@ -82,9 +82,7 @@ class PollinationsImageGenProvider implements ImageGenProvider {
   Future<ImageGenResult> generate(
       String targetWord, String exampleSentence) async {
     try {
-      // Flat-design vector prompt — Flux handles clean illustrations far
-      // better than photorealism (that's the Firefly manual path instead).
-      final prompt = PromptBuilder.vector(targetWord, exampleSentence);
+      final prompt = PromptBuilder.image(targetWord, exampleSentence);
       // A fresh seed each call so "regenerate" yields a different image.
       final seed = DateTime.now().millisecondsSinceEpoch % 1000000;
       final res = await _dio.get<List<int>>(
@@ -95,8 +93,8 @@ class PollinationsImageGenProvider implements ImageGenProvider {
           'height': 576,
           'nologo': 'true',
           'enhance': 'true',
-          // Base flux suits clean flat-design illustrations well.
-          'model': 'flux',
+          // Realism-tuned variant; falls back to base flux if unavailable.
+          'model': 'flux-realism',
           'seed': seed,
         },
         options: Options(

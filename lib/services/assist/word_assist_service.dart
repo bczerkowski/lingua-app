@@ -1,4 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../ai/image_gen_service.dart' show kGoogleKeyPref;
 
 /// Result of a dictionary lookup (dictionaryapi.dev).
 class DictLookup {
@@ -73,5 +76,58 @@ class WordAssistService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Generates a livelier example sentence with Gemini (text is free on the
+  /// AI Studio free tier). Returns null when no key is saved or on any error,
+  /// so callers fall back to the dictionary example.
+  Future<String?> aiExample(String english) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
+    if (key.isEmpty) return null;
+    try {
+      final prompt =
+          "Write ONE natural, vivid, memorable example sentence in English "
+          "using the word \"$english\". Make it interesting and concrete — a "
+          "specific little scene, not a dull dictionary example — 8 to 16 "
+          "words, modern everyday context, easy for a language learner. "
+          "Return ONLY the sentence: no quotes, no label, no explanation.";
+      final r = await _dio.post(
+        'https://generativelanguage.googleapis.com/v1beta/models/'
+        'gemini-2.5-flash:generateContent',
+        data: {
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt}
+              ]
+            }
+          ],
+        },
+        options: Options(
+          headers: {'x-goog-api-key': key, 'Content-Type': 'application/json'},
+        ),
+      );
+      var text = _firstText(r.data)?.trim();
+      if (text == null || text.isEmpty) return null;
+      // Strip wrapping quotes the model sometimes adds.
+      text = text.replaceAll(RegExp(r'^["“”]+|["“”]+$'), '').trim();
+      return text.isEmpty ? null : text;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _firstText(dynamic data) {
+    if (data is! Map) return null;
+    final cands = data['candidates'];
+    if (cands is! List || cands.isEmpty) return null;
+    final content = (cands.first as Map)['content'];
+    final parts = content is Map ? content['parts'] : null;
+    if (parts is! List) return null;
+    for (final p in parts) {
+      if (p is Map && p['text'] is String) return p['text'] as String;
+    }
+    return null;
   }
 }

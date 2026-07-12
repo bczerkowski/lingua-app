@@ -327,6 +327,14 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   Future<void> _genExample() async {
     if (!_needEnglish()) return;
+    // Prefer a livelier AI-written sentence (free Gemini text) when a key is
+    // set; otherwise fall back to the dictionary's example.
+    final ai = await _assist.aiExample(_english.text.trim());
+    if (!mounted) return;
+    if (ai != null) {
+      _example.text = ai;
+      return;
+    }
     final d = await _assist.lookup(_english.text.trim());
     if (!mounted) return;
     if (d?.example != null) {
