@@ -84,27 +84,33 @@ class WordAssistService {
     return (prefs.getString(kGoogleKeyPref)?.trim() ?? '').isNotEmpty;
   }
 
-  /// A livelier, smarter example sentence via Gemini — understands phrasal
-  /// verbs, idioms and expressions, unlike the single-word dictionary.
-  Future<String?> aiExample(String english) => _generate(
-        "You are helping build a language-learning flashcard. The English term "
-        "is \"$english\" — it may be a single word, a phrasal verb, an idiom, "
-        "or an expression (sometimes with a placeholder like 'something' or "
-        "'someone'). Write ONE natural, vivid example sentence that uses the "
-        "term correctly and idiomatically, replacing any placeholder with a "
-        "real word. 8 to 16 words, modern everyday context, easy for a learner. "
-        "Return ONLY the sentence: no quotes, no label, no explanation.",
-      );
+  /// Prompt for an example sentence (shared by the generator and Copy prompt).
+  static String examplePrompt(String english) =>
+      "You are helping build a language-learning flashcard. The English term "
+      "is \"$english\" — it may be a single word, a phrasal verb, an idiom, "
+      "or an expression (sometimes with a placeholder like 'something' or "
+      "'someone'). Write ONE natural, vivid example sentence that uses the "
+      "term correctly and idiomatically, replacing any placeholder with a "
+      "real word. 8 to 16 words, modern everyday context, easy for a learner. "
+      "Return ONLY the sentence: no quotes, no label, no explanation.";
 
-  /// A clear learner-friendly definition via Gemini — also handles phrasal
-  /// verbs, idioms and expressions the dictionary can't.
-  Future<String?> aiDefinition(String english) => _generate(
-        "Define the English term \"$english\" for a language learner. It may be "
-        "a single word, a phrasal verb, an idiom, or an expression. Explain "
-        "clearly what it means and how it is used, in 1 to 2 short sentences of "
-        "plain English. Return ONLY the definition text: no quotes, no label, "
-        "do not repeat the term as a heading.",
-      );
+  /// Prompt for a definition (shared by the generator and Copy prompt).
+  static String definitionPrompt(String english) =>
+      "Define the English term \"$english\" for a language learner. It may be "
+      "a single word, a phrasal verb, an idiom, or an expression. Explain "
+      "clearly what it means and how it is used, in 1 to 2 short sentences of "
+      "plain English. Return ONLY the definition text: no quotes, no label, "
+      "do not repeat the term as a heading.";
+
+  /// A livelier, smarter example sentence — understands phrasal verbs, idioms
+  /// and expressions, unlike the single-word dictionary.
+  Future<String?> aiExample(String english) =>
+      _generate(examplePrompt(english));
+
+  /// A clear learner-friendly definition — also handles phrasal verbs, idioms
+  /// and expressions the dictionary can't.
+  Future<String?> aiDefinition(String english) =>
+      _generate(definitionPrompt(english));
 
   /// Generates text with the best available engine: Gemini first (higher
   /// quality) when a key is set, then the free keyless Pollinations text model

@@ -142,11 +142,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             _assistRow('Suggest Polish meaning', Icons.translate, 'pl',
                 _suggestPolish),
             _field(_example, 'Example sentence', maxLines: 2, maxLength: 300),
-            _assistRow('Generate example sentence', Icons.auto_awesome, 'ex',
-                _genExample),
+            _genRowWithCopy('Generate example sentence', 'ex', _genExample,
+                () => WordAssistService.examplePrompt(_english.text.trim())),
             _field(_definition, 'English definition', maxLines: 2, maxLength: 500),
-            _assistRow('Generate definition', Icons.auto_awesome, 'def',
-                _genDefinition),
+            _genRowWithCopy('Generate definition', 'def', _genDefinition,
+                () => WordAssistService.definitionPrompt(_english.text.trim())),
             const SizedBox(height: 12),
             _TagInput(
               // Re-seed the chip editor once the card's tags have loaded.
@@ -292,6 +292,52 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           ),
           onPressed: _busyAction != null ? null : () => _runAssist(key, run),
         ),
+      ),
+    );
+  }
+
+  /// A Generate row that also offers "Copy prompt" — paste it into any AI chat
+  /// (e.g. your Gemini on gmail) and copy the answer back into the field.
+  Widget _genRowWithCopy(String label, String key, Future<void> Function() run,
+      String Function() promptBuilder) {
+    final busy = _busyAction == key;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_all_outlined, size: 16),
+            label: const Text('Copy prompt', style: TextStyle(fontSize: 12.5)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.muted,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            ),
+            onPressed: () async {
+              if (!_needEnglish()) return;
+              await Clipboard.setData(ClipboardData(text: promptBuilder()));
+              if (!mounted) return;
+              _toast('Prompt copied — paste it into Gemini, then copy the '
+                  'answer back here');
+            },
+          ),
+          TextButton.icon(
+            icon: busy
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_awesome, size: 16),
+            label: Text(label, style: const TextStyle(fontSize: 12.5)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.coralDark,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            ),
+            onPressed: _busyAction != null ? null : () => _runAssist(key, run),
+          ),
+        ],
       ),
     );
   }
