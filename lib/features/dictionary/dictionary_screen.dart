@@ -1060,10 +1060,11 @@ class _ManageMenu extends StatelessWidget {
     try {
       final r = await sync.migrateImagesToStorage();
       messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
         content: Text(r.uploaded == 0 && r.failed == 0
             ? 'All images are already in the cloud.'
-            : 'Uploaded ${r.uploaded} image(s)'
-                '${r.failed > 0 ? ', ${r.failed} failed — check the bucket setup' : ''}.'),
+            : 'Uploaded ${r.uploaded}, ${r.failed} failed'
+                '${r.error != null ? ' — ${r.error}' : ''}.'),
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));

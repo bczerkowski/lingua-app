@@ -339,47 +339,54 @@ class SyncService extends ChangeNotifier {
   // --- Image storage -----------------------------------------------------
   static const String imageBucket = 'card-images';
 
-  /// Uploads image [bytes] to Supabase Storage and returns its public URL, or
-  /// null on failure. Local bytes are always kept, so nothing is ever lost.
-  Future<String?> uploadImage(int cardId, Uint8List bytes) async {
-    if (!signedIn) return null;
+  /// Uploads image [bytes] to Supabase Storage and returns its public URL.
+  /// Throws a short descriptive error on failure (the caller keeps the local
+  /// bytes, so nothing is ever lost — but we surface WHY it failed).
+  Future<String> uploadImage(int cardId, Uint8List bytes) async {
+    if (!signedIn) throw 'not signed in';
     await _ensureToken();
     final path = '$_uid/${DateTime.now().microsecondsSinceEpoch}-$cardId.jpg';
-    try {
-      await _dio.post(
-        '/storage/v1/object/$imageBucket/$path',
-        data: Stream.fromIterable([bytes]),
-        options: Options(
-          headers: {
-            ..._restHeaders,
-            'Content-Type': 'image/jpeg',
-            'Content-Length': bytes.length,
-            'x-upsert': 'true',
-          },
-          contentType: 'image/jpeg',
-        ),
-      );
+    final r = await _dio.post(
+      '/storage/v1/object/$imageBucket/$path',
+      data: Stream.fromIterable([bytes]),
+      options: Options(
+        headers: {
+          'apikey': SupabaseConfig.anonKey,
+          'Authorization': 'Bearer $_access',
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'true',
+        },
+        contentType: 'image/jpeg',
+        validateStatus: (_) => true, // inspect the status ourselves
+      ),
+    );
+    final code = r.statusCode ?? 0;
+    if (code >= 200 && code < 300) {
       return '${SupabaseConfig.url}/storage/v1/object/public/$imageBucket/$path';
-    } catch (_) {
-      return null;
     }
+    final body = r.data is Map
+        ? ((r.data as Map)['message'] ?? (r.data as Map)['error'] ?? '')
+        : r.data;
+    throw 'HTTP $code ${body.toString().substring(0, body.toString().length.clamp(0, 120))}';
   }
 
   /// Uploads every local image that isn't in Storage yet, records its URL, and
   /// then syncs the (now lightweight) deck. Returns (uploaded, failed) counts.
-  Future<({int uploaded, int failed})> migrateImagesToStorage(
+  Future<({int uploaded, int failed, String? error})> migrateImagesToStorage(
       {void Function(int done, int total)? onProgress}) async {
-    if (!signedIn) return (uploaded: 0, failed: 0);
+    if (!signedIn) return (uploaded: 0, failed: 0, error: 'not signed in');
     final pending = await db.cardsNeedingImageUpload();
     var uploaded = 0, failed = 0;
+    String? sampleError;
     for (var i = 0; i < pending.length; i++) {
       final card = pending[i];
-      final url = await uploadImage(card.id, card.imageBytes!);
-      if (url != null) {
+      try {
+        final url = await uploadImage(card.id, card.imageBytes!);
         await db.setImageUrl(card.id, url);
         uploaded++;
-      } else {
+      } catch (e) {
         failed++;
+        sampleError ??= e.toString();
       }
       onProgress?.call(i + 1, pending.length);
     }
@@ -388,7 +395,7 @@ class SyncService extends ChangeNotifier {
         await _push(force: true);
       } catch (_) {/* deck push can be retried by normal sync */}
     }
-    return (uploaded: uploaded, failed: failed);
+    return (uploaded: uploaded, failed: failed, error: sampleError);
   }
 
   // --- Change listeners --------------------------------------------------

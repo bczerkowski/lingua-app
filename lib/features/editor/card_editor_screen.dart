@@ -718,8 +718,9 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       // only the URL (not the heavy base64). Local bytes are still kept for
       // instant/offline display. If the upload fails, we just keep the bytes.
       if (_imageBytes != null && _imageUrl == null && sync.signedIn) {
-        final url = await sync.uploadImage(widget.cardId ?? 0, _imageBytes!);
-        if (url != null) _imageUrl = url;
+        try {
+          _imageUrl = await sync.uploadImage(widget.cardId ?? 0, _imageBytes!);
+        } catch (_) {/* keep local bytes; "Sync images to cloud" can retry */}
       }
       int cardId;
       if (_isNew) {
