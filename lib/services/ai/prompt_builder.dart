@@ -15,4 +15,15 @@ class PromptBuilder {
         "letters, words, watermarks, plastic-looking skin, or artificial AI "
         "aesthetics.";
   }
+
+  /// Flat-design vector style — used for the in-app Pollinations generator,
+  /// which handles clean illustrations far better than photorealism.
+  static String vector(String targetWord, String exampleSentence) {
+    final sentence = exampleSentence.trim();
+    final scene = sentence.isNotEmpty ? sentence : targetWord.trim();
+    return "A clean, minimalist vector illustration in flat design style "
+        "representing: '$scene'. Bright, solid colors, educational textbook "
+        "style, simple shapes, white background. STRICTLY AVOID: photorealism, "
+        "details, shadows, 3D renders, text, letters, words.";
+  }
 }
