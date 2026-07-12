@@ -11,6 +11,7 @@ import '../../data/seed.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
 import '../../services/import_export/list_image.dart';
+import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
@@ -768,6 +769,7 @@ class _ManageMenu extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const StatsScreen()),
           );
         }
+        if (v == 'ai_settings') showAiImageSettings(context);
         if (v == 'export_deck') _exportDeck(context);
         if (v == 'export_image') _exportImage(context);
         if (v == 'import_deck') _importDeck(context);
@@ -801,6 +803,15 @@ class _ManageMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.folder_outlined),
             title: Text('Manage categories'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'ai_settings',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.auto_awesome_outlined),
+            title: Text('AI image settings'),
+            subtitle: Text('Use Gemini (free key) or Pollinations'),
           ),
         ),
         PopupMenuDivider(),

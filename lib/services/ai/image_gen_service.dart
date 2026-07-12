@@ -2,8 +2,14 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'prompt_builder.dart';
+
+/// Keys used to store the (optional) Google AI Studio credentials locally.
+const String kGoogleKeyPref = 'ai_google_key';
+const String kGoogleModelPref = 'ai_google_model';
+const String kGoogleDefaultModel = 'gemini-2.5-flash-image';
 
 class ImageGenResult {
   final bool ok;
@@ -107,6 +113,113 @@ class PollinationsImageGenProvider implements ImageGenProvider {
     } catch (e) {
       return ImageGenResult.failure(e.toString());
     }
+  }
+}
+
+/// Google Gemini image generation via the Generative Language API, using a
+/// free Google AI Studio API key stored locally. (Imagen via this API needs a
+/// billed project; the Gemini image model works on the free tier.)
+class GoogleImageGenProvider implements ImageGenProvider {
+  final Dio _dio;
+  GoogleImageGenProvider(this._dio);
+
+  @override
+  Future<ImageGenResult> generate(
+      String targetWord, String exampleSentence) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
+    final model = prefs.getString(kGoogleModelPref)?.trim();
+    final effModel = (model == null || model.isEmpty) ? kGoogleDefaultModel : model;
+    if (key.isEmpty) {
+      return const ImageGenResult.failure(
+          'No Google API key set — add one in ⋮ → AI image settings.');
+    }
+    try {
+      final prompt = PromptBuilder.image(targetWord, exampleSentence);
+      final res = await _dio.post(
+        'https://generativelanguage.googleapis.com/v1beta/models/'
+        '$effModel:generateContent',
+        data: {
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt}
+              ]
+            }
+          ],
+          'generationConfig': {
+            'responseModalities': ['IMAGE']
+          },
+        },
+        options: Options(
+          // Key goes in a header, never the URL (keeps it out of any logs).
+          headers: {'x-goog-api-key': key, 'Content-Type': 'application/json'},
+          responseType: ResponseType.json,
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
+      );
+      final b64 = _extractImage(res.data);
+      if (b64 != null && b64.isNotEmpty) {
+        return ImageGenResult.success(base64Decode(b64));
+      }
+      return ImageGenResult.failure(
+          _extractBlock(res.data) ?? 'Gemini returned no image — try again.');
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      final msg = body is Map && body['error'] is Map
+          ? (body['error']['message'] ?? e.message).toString()
+          : (e.message ?? 'Network error');
+      return ImageGenResult.failure('Gemini error: $msg');
+    } catch (e) {
+      return ImageGenResult.failure(e.toString());
+    }
+  }
+
+  String? _extractImage(dynamic data) {
+    if (data is! Map) return null;
+    final candidates = data['candidates'];
+    if (candidates is! List || candidates.isEmpty) return null;
+    final content = (candidates.first as Map)['content'];
+    if (content is! Map) return null;
+    final parts = content['parts'];
+    if (parts is! List) return null;
+    for (final p in parts) {
+      if (p is Map) {
+        final inline = p['inlineData'] ?? p['inline_data'];
+        if (inline is Map && inline['data'] is String) {
+          return inline['data'] as String;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _extractBlock(dynamic data) {
+    if (data is! Map) return null;
+    final pf = data['promptFeedback'];
+    if (pf is Map && pf['blockReason'] != null) {
+      return 'Blocked by the safety filter (${pf['blockReason']}).';
+    }
+    return null;
+  }
+}
+
+/// Default generator: uses Google Gemini when an API key has been saved,
+/// otherwise the free keyless pollinations.ai. Re-reads the key each call so
+/// setting/clearing it takes effect without restarting the app.
+class DefaultImageGenProvider implements ImageGenProvider {
+  final ImageGenProvider google;
+  final ImageGenProvider pollinations;
+  DefaultImageGenProvider({required this.google, required this.pollinations});
+
+  @override
+  Future<ImageGenResult> generate(
+      String targetWord, String exampleSentence) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
+    final provider = key.isNotEmpty ? google : pollinations;
+    return provider.generate(targetWord, exampleSentence);
   }
 }
 

@@ -32,12 +32,16 @@ class AppServices {
         imageGen = imageGen ?? _defaultImageGen();
 
   /// Uses a custom backend proxy when [kImageBackendEndpoint] is configured,
-  /// otherwise the free keyless pollinations.ai generator (no setup needed).
+  /// otherwise Google Gemini (when the user has saved an API key) with a
+  /// free keyless pollinations.ai fallback.
   static ImageGenProvider _defaultImageGen() {
     if (kImageBackendEndpoint.isNotEmpty) {
       return ProxyImageGenProvider(Dio(), endpoint: kImageBackendEndpoint);
     }
-    return PollinationsImageGenProvider(Dio());
+    return DefaultImageGenProvider(
+      google: GoogleImageGenProvider(Dio()),
+      pollinations: PollinationsImageGenProvider(Dio()),
+    );
   }
 
   static AppServices of(BuildContext context) {
