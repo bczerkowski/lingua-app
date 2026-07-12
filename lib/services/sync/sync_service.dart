@@ -242,6 +242,22 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Number of cards in a deck JSON that carry an image (bytes or URL).
+  int _deckImageCount(String data) {
+    try {
+      final cards = (jsonDecode(data) as Map)['cards'];
+      if (cards is! List) return -1;
+      return cards.where((c) {
+        if (c is! Map) return false;
+        final b = c['imageBytes'];
+        final u = c['imageUrl'];
+        return (b is String && b.isNotEmpty) || (u is String && u.isNotEmpty);
+      }).length;
+    } catch (_) {
+      return -1;
+    }
+  }
+
   Future<void> _push({bool force = false, bool userInitiated = false}) async {
     final json = await db.exportDeck();
     if (!force && json == _lastSyncedData) {
@@ -300,14 +316,24 @@ class SyncService extends ChangeNotifier {
       final localCount = await db.countCards();
       final remoteCount = _deckCardCount(data);
       final lost = localCount - remoteCount;
-      final destructive = remoteCount >= 0 &&
-          localCount > 0 &&
-          lost >= 8 &&
-          remoteCount < localCount * 0.7;
+      // Also guard IMAGES: never let a remote deck that has noticeably fewer
+      // images overwrite local — that's how newer photos got reverted to older.
+      final localImages = await db.countCardsWithImage();
+      final remoteImages = _deckImageCount(data);
+      final lostImages = localImages - remoteImages;
+      final destructive = (remoteCount >= 0 &&
+              localCount > 0 &&
+              lost >= 8 &&
+              remoteCount < localCount * 0.7) ||
+          (remoteImages >= 0 &&
+              localImages > 0 &&
+              lostImages >= 5 &&
+              remoteImages < localImages * 0.7);
       if (destructive) {
         await _writeDirty(true);
         await _push(force: true);
-        _set(SyncState.synced, 'Kept this device’s fuller deck ($localCount)');
+        _set(SyncState.synced,
+            'Kept this device’s deck ($localCount cards, $localImages images)');
         return;
       }
     }

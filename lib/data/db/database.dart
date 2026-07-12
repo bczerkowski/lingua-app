@@ -179,6 +179,16 @@ class AppDatabase extends _$AppDatabase {
     return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
 
+  /// How many cards currently have an image (local bytes or a Storage URL).
+  Future<int> countCardsWithImage() async {
+    final c = countAll();
+    final row = await (selectOnly(cards)
+          ..addColumns([c])
+          ..where(cards.imageBytes.isNotNull() | cards.imageUrl.isNotNull()))
+        .getSingle();
+    return row.read(c) ?? 0;
+  }
+
   Future<int> countCards() async {
     final c = countAll();
     final row = await (selectOnly(cards)
