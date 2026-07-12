@@ -3,9 +3,11 @@ import 'dart:ui' as ui;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
+import '../../services/ai/prompt_builder.dart';
 import '../../services/assist/word_assist_service.dart';
 import '../../services/media/image_import_service.dart';
 import '../../theme.dart';
@@ -461,6 +463,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                         label: const Text('Change image'),
                         onPressed: _pickFile,
                       ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.copy_all_outlined, size: 18),
+                        label: const Text('Copy prompt'),
+                        onPressed: _copyPrompt,
+                      ),
                       TextButton.icon(
                         icon: const Icon(Icons.delete_outline, size: 18),
                         label: const Text('Remove image'),
@@ -517,6 +524,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                     label: const Text('Paste screenshot'),
                     onPressed: _pasteScreenshot,
                   ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.copy_all_outlined, size: 18),
+                    label: const Text('Copy prompt'),
+                    onPressed: _copyPrompt,
+                  ),
                 ],
               ),
             ],
@@ -524,6 +536,17 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
         ),
       ),
     );
+  }
+
+  /// Copies the exact image prompt for this card so it can be pasted into an
+  /// external generator (e.g. Adobe Firefly), then brought back via
+  /// "Change image" / "Paste screenshot".
+  Future<void> _copyPrompt() async {
+    final prompt =
+        PromptBuilder.image(_english.text.trim(), _example.text.trim());
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (!mounted) return;
+    _toast('Prompt copied — paste it into Firefly or any generator');
   }
 
   Future<void> _generateImage() async {
