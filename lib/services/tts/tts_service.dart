@@ -16,7 +16,7 @@ class TtsService {
   Future<void> _ensureInit() async {
     if (_ready) return;
     await _tts.setVolume(1.0);
-    await _tts.setSpeechRate(1.0); // natural pace (0.45 was half speed)
+    await _tts.setSpeechRate(0.9); // slightly slower than normal, still natural
     await _tts.setPitch(1.0);
     _ready = true;
   }
