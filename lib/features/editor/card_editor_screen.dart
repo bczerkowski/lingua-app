@@ -326,32 +326,51 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   Future<void> _genExample() async {
     if (!_needEnglish()) return;
-    // Prefer a livelier AI-written sentence (free Gemini text) when a key is
-    // set; otherwise fall back to the dictionary's example.
-    final ai = await _assist.aiExample(_english.text.trim());
+    final word = _english.text.trim();
+    // Prefer a smarter AI sentence (free Gemini text; handles phrasal verbs /
+    // idioms / expressions) when a key is set; else the dictionary example.
+    final ai = await _assist.aiExample(word);
     if (!mounted) return;
     if (ai != null) {
       _example.text = ai;
       return;
     }
-    final d = await _assist.lookup(_english.text.trim());
+    final d = await _assist.lookup(word);
     if (!mounted) return;
     if (d?.example != null) {
       _example.text = d!.example!;
     } else {
-      _toast('No example found for “${_english.text.trim()}”');
+      await _noAiToast('example', word);
     }
   }
 
   Future<void> _genDefinition() async {
     if (!_needEnglish()) return;
-    final d = await _assist.lookup(_english.text.trim());
+    final word = _english.text.trim();
+    final ai = await _assist.aiDefinition(word);
+    if (!mounted) return;
+    if (ai != null) {
+      _definition.text = ai;
+      return;
+    }
+    final d = await _assist.lookup(word);
     if (!mounted) return;
     if (d?.definition != null) {
       _definition.text = d!.definition!;
     } else {
-      _toast('No definition found for “${_english.text.trim()}”');
+      await _noAiToast('definition', word);
     }
+  }
+
+  /// When both AI and the dictionary come up empty, nudge the user toward the
+  /// free Gemini key (which handles phrases/idioms the dictionary can't).
+  Future<void> _noAiToast(String what, String word) async {
+    final hasKey = await _assist.hasAiKey();
+    if (!mounted) return;
+    _toast(hasKey
+        ? 'Could not generate a $what for “$word” — try again.'
+        : 'No $what for “$word”. Add a free Gemini key (⋮ → AI image '
+            'settings) for phrases, idioms & tenses.');
   }
 
   static const _suggestedTags = [
