@@ -329,10 +329,16 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     final word = _english.text.trim();
     // Prefer a smarter AI sentence (free Gemini text; handles phrasal verbs /
     // idioms / expressions) when a key is set; else the dictionary example.
-    final ai = await _assist.aiExample(word);
-    if (!mounted) return;
-    if (ai != null) {
-      _example.text = ai;
+    try {
+      final ai = await _assist.aiExample(word);
+      if (!mounted) return;
+      if (ai != null) {
+        _example.text = ai;
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _toast('AI example failed — $e');
       return;
     }
     final d = await _assist.lookup(word);
@@ -347,10 +353,16 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   Future<void> _genDefinition() async {
     if (!_needEnglish()) return;
     final word = _english.text.trim();
-    final ai = await _assist.aiDefinition(word);
-    if (!mounted) return;
-    if (ai != null) {
-      _definition.text = ai;
+    try {
+      final ai = await _assist.aiDefinition(word);
+      if (!mounted) return;
+      if (ai != null) {
+        _definition.text = ai;
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _toast('AI definition failed — $e');
       return;
     }
     final d = await _assist.lookup(word);

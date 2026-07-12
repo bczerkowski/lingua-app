@@ -106,14 +106,18 @@ class WordAssistService {
         "do not repeat the term as a heading.",
       );
 
-  /// Calls Gemini text (free on the AI Studio free tier). Returns null when no
-  /// key is saved or on any error, so callers can fall back to the dictionary.
+  /// Calls Gemini text (free on the AI Studio free tier). Returns null ONLY
+  /// when no key is saved (so callers fall back to the dictionary). Throws a
+  /// short descriptive error on API failure / empty output so the UI can show
+  /// exactly what went wrong instead of a generic message.
   Future<String?> _gemini(String prompt) async {
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
     if (key.isEmpty) return null;
+
+    Response<dynamic> r;
     try {
-      final r = await _dio.post(
+      r = await _dio.post(
         'https://generativelanguage.googleapis.com/v1beta/models/'
         'gemini-2.5-flash:generateContent',
         data: {
@@ -127,18 +131,36 @@ class WordAssistService {
         },
         options: Options(
           headers: {'x-goog-api-key': key, 'Content-Type': 'application/json'},
+          validateStatus: (_) => true, // inspect non-2xx ourselves
         ),
       );
-      var text = _firstText(r.data)?.trim();
-      if (text == null || text.isEmpty) return null;
-      // Strip wrapping quotes the model sometimes adds.
-      text = text.replaceAll(RegExp(r'^["“”]+|["“”]+$'), '').trim();
-      return text.isEmpty ? null : text;
-    } catch (_) {
-      return null;
+    } on DioException catch (e) {
+      throw 'network (${e.type.name})';
     }
+
+    final data = r.data;
+    if (r.statusCode != 200) {
+      final m = data is Map && data['error'] is Map
+          ? (data['error'] as Map)['message']
+          : null;
+      throw 'HTTP ${r.statusCode}${m is String ? ' — $m' : ''}';
+    }
+    if (data is Map &&
+        data['promptFeedback'] is Map &&
+        (data['promptFeedback'] as Map)['blockReason'] != null) {
+      throw 'blocked (${(data['promptFeedback'] as Map)['blockReason']})';
+    }
+    final raw = _firstText(data);
+    if (raw == null || raw.trim().isEmpty) {
+      final fin = _finish(data);
+      throw 'empty response${fin != null ? ' ($fin)' : ''}';
+    }
+    final cleaned = _clean(raw);
+    if (cleaned.isEmpty) throw 'empty after cleanup';
+    return cleaned;
   }
 
+  /// Concatenates every text part of the first candidate.
   String? _firstText(dynamic data) {
     if (data is! Map) return null;
     final cands = data['candidates'];
@@ -146,9 +168,31 @@ class WordAssistService {
     final content = (cands.first as Map)['content'];
     final parts = content is Map ? content['parts'] : null;
     if (parts is! List) return null;
+    final buf = StringBuffer();
     for (final p in parts) {
-      if (p is Map && p['text'] is String) return p['text'] as String;
+      if (p is Map && p['text'] is String) buf.write(p['text'] as String);
     }
-    return null;
+    final s = buf.toString();
+    return s.isEmpty ? null : s;
+  }
+
+  String? _finish(dynamic data) {
+    if (data is! Map) return null;
+    final cands = data['candidates'];
+    if (cands is! List || cands.isEmpty) return null;
+    final fr = (cands.first as Map)['finishReason'];
+    return fr is String ? fr : null;
+  }
+
+  /// Strips markdown code fences and wrapping quotes (keeps multi-sentence text).
+  String _clean(String s) {
+    var t = s.trim();
+    t = t.replaceAll(RegExp(r'^```[a-zA-Z]*\s*'), '');
+    t = t.replaceAll(RegExp(r'\s*```$'), '');
+    t = t.trim();
+    t = t
+        .replaceAll(RegExp('^["“”\']+'), '')
+        .replaceAll(RegExp('["“”\']+\$'), '');
+    return t.trim();
   }
 }
