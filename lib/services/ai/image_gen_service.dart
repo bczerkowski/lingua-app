@@ -93,7 +93,8 @@ class PollinationsImageGenProvider implements ImageGenProvider {
           'height': 576,
           'nologo': 'true',
           'enhance': 'true',
-          'model': 'flux',
+          // Realism-tuned variant; falls back to base flux if unavailable.
+          'model': 'flux-realism',
           'seed': seed,
         },
         options: Options(
