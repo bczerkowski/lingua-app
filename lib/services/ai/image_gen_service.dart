@@ -218,8 +218,16 @@ class DefaultImageGenProvider implements ImageGenProvider {
       String targetWord, String exampleSentence) async {
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString(kGoogleKeyPref)?.trim() ?? '';
-    final provider = key.isNotEmpty ? google : pollinations;
-    return provider.generate(targetWord, exampleSentence);
+    if (key.isEmpty) {
+      return pollinations.generate(targetWord, exampleSentence);
+    }
+    // Try Gemini first; if it fails (e.g. the image model needs billing, or a
+    // rate limit), fall back to the free generator so the user still gets an
+    // image instead of a hard error.
+    final g = await google.generate(targetWord, exampleSentence);
+    if (g.ok) return g;
+    final p = await pollinations.generate(targetWord, exampleSentence);
+    return p.ok ? p : g;
   }
 }
 
