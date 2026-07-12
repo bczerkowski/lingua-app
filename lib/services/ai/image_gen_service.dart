@@ -82,9 +82,11 @@ class PollinationsImageGenProvider implements ImageGenProvider {
       final res = await _dio.get<List<int>>(
         'https://image.pollinations.ai/prompt/${Uri.encodeComponent(prompt)}',
         queryParameters: {
-          'width': 768,
-          'height': 512,
+          // Higher-res 16:9 (matches the card's image anchor) for sharper photos.
+          'width': 1024,
+          'height': 576,
           'nologo': 'true',
+          'enhance': 'true',
           'model': 'flux',
           'seed': seed,
         },
