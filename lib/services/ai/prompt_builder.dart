@@ -18,12 +18,19 @@ class PromptBuilder {
 
   /// Flat-design vector style — used for the in-app Pollinations generator,
   /// which handles clean illustrations far better than photorealism.
+  ///
+  /// Focuses on ONE iconic subject for the word (sentence only as light
+  /// context) and hard-bans text-bearing objects — complex scenes with papers/
+  /// signs are exactly what makes free models render garbled fake text.
   static String vector(String targetWord, String exampleSentence) {
+    final word = targetWord.trim();
     final sentence = exampleSentence.trim();
-    final scene = sentence.isNotEmpty ? sentence : targetWord.trim();
-    return "A clean, minimalist vector illustration in flat design style "
-        "representing: '$scene'. Bright, solid colors, educational textbook "
-        "style, simple shapes, white background. STRICTLY AVOID: photorealism, "
-        "details, shadows, 3D renders, text, letters, words.";
+    final context = sentence.isNotEmpty ? " (context: '$sentence')" : '';
+    return "A simple, clean, minimalist flat-design vector illustration "
+        "representing the word '$word'$context. One clear central subject, "
+        "bold flat solid colors, smooth simple shapes, thick clean outlines, "
+        "plain solid pastel background, lots of empty space, modern icon / "
+        "sticker style. STRICTLY NO text, letters, words, numbers, captions, "
+        "signs, posters, books, papers, labels, or logos of any kind.";
   }
 }
