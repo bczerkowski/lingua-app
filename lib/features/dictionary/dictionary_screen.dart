@@ -10,6 +10,7 @@ import '../../data/db/database.dart';
 import '../../data/seed.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
+import '../../services/import_export/list_image.dart';
 import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
@@ -768,6 +769,7 @@ class _ManageMenu extends StatelessWidget {
           );
         }
         if (v == 'export_deck') _exportDeck(context);
+        if (v == 'export_image') _exportImage(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -809,6 +811,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.cloud_download_outlined),
             title: Text('Back up / export deck'),
             subtitle: Text('Whole deck to a file (move to phone)'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'export_image',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.image_outlined),
+            title: Text('Export list as image'),
+            subtitle: Text('Whole list as one long PNG'),
           ),
         ),
         PopupMenuItem(
@@ -974,6 +985,36 @@ class _ManageMenu extends StatelessWidget {
           SnackBar(content: Text('Export failed: $e')),
         );
       }
+    }
+  }
+
+  /// Render the whole entry list to one tall PNG and download it. Useful for a
+  /// full-page snapshot (browser screenshot tools can't capture the canvas app).
+  Future<void> _exportImage(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Generating image…')),
+    );
+    try {
+      final entries = await db.searchEntries('').first;
+      if (entries.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No entries to export.')),
+        );
+        return;
+      }
+      final png = await renderEntriesPng(entries);
+      final stamp = DateTime.now().toIso8601String().split('T').first;
+      downloadBytes('lexicon-lista-$stamp.png', png, mime: 'image/png');
+      messenger.showSnackBar(
+        SnackBar(
+            content: Text('Image saved (${entries.length} entries) — '
+                'check your downloads.')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Image export failed: $e')),
+      );
     }
   }
 
