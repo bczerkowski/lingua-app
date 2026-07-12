@@ -336,6 +336,61 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  // --- Image storage -----------------------------------------------------
+  static const String imageBucket = 'card-images';
+
+  /// Uploads image [bytes] to Supabase Storage and returns its public URL, or
+  /// null on failure. Local bytes are always kept, so nothing is ever lost.
+  Future<String?> uploadImage(int cardId, Uint8List bytes) async {
+    if (!signedIn) return null;
+    await _ensureToken();
+    final path = '$_uid/${DateTime.now().microsecondsSinceEpoch}-$cardId.jpg';
+    try {
+      await _dio.post(
+        '/storage/v1/object/$imageBucket/$path',
+        data: Stream.fromIterable([bytes]),
+        options: Options(
+          headers: {
+            ..._restHeaders,
+            'Content-Type': 'image/jpeg',
+            'Content-Length': bytes.length,
+            'x-upsert': 'true',
+          },
+          contentType: 'image/jpeg',
+        ),
+      );
+      return '${SupabaseConfig.url}/storage/v1/object/public/$imageBucket/$path';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Uploads every local image that isn't in Storage yet, records its URL, and
+  /// then syncs the (now lightweight) deck. Returns (uploaded, failed) counts.
+  Future<({int uploaded, int failed})> migrateImagesToStorage(
+      {void Function(int done, int total)? onProgress}) async {
+    if (!signedIn) return (uploaded: 0, failed: 0);
+    final pending = await db.cardsNeedingImageUpload();
+    var uploaded = 0, failed = 0;
+    for (var i = 0; i < pending.length; i++) {
+      final card = pending[i];
+      final url = await uploadImage(card.id, card.imageBytes!);
+      if (url != null) {
+        await db.setImageUrl(card.id, url);
+        uploaded++;
+      } else {
+        failed++;
+      }
+      onProgress?.call(i + 1, pending.length);
+    }
+    if (uploaded > 0) {
+      try {
+        await _push(force: true);
+      } catch (_) {/* deck push can be retried by normal sync */}
+    }
+    return (uploaded: uploaded, failed: failed);
+  }
+
   // --- Change listeners --------------------------------------------------
   void _listenLocal() {
     _localSub = db.tableUpdates().listen((_) {

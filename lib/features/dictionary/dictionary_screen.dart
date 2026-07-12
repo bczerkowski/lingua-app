@@ -11,6 +11,7 @@ import '../../data/seed.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
 import '../../services/import_export/list_image.dart';
+import '../../widgets/card_image.dart';
 import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
@@ -601,16 +602,20 @@ class _EntryRow extends StatelessWidget {
         ),
         // A small thumbnail of the card's image sits between the two terms
         // (falls back to a dot when the card has no image).
-        if (card.imageBytes != null)
+        if (card.imageBytes != null ||
+            (card.imageUrl != null && card.imageUrl!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.memory(card.imageBytes!,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: CardImage(
+                    bytes: card.imageBytes,
+                    url: card.imageUrl,
+                    fit: BoxFit.cover),
+              ),
             ),
           )
         else
@@ -772,6 +777,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'ai_settings') showAiImageSettings(context);
         if (v == 'export_deck') _exportDeck(context);
         if (v == 'export_image') _exportImage(context);
+        if (v == 'migrate_images') _migrateImages(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -831,6 +837,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.image_outlined),
             title: Text('Export list as image'),
             subtitle: Text('Whole list as one long PNG'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'migrate_images',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_sync_outlined),
+            title: Text('Sync images to cloud'),
+            subtitle: Text('Upload photos to Storage so they reach mobile'),
           ),
         ),
         PopupMenuItem(
@@ -1026,6 +1041,32 @@ class _ManageMenu extends StatelessWidget {
       messenger.showSnackBar(
         SnackBar(content: Text('Image export failed: $e')),
       );
+    }
+  }
+
+  /// Upload every local image to Supabase Storage so photos reach other
+  /// devices without bloating the synced deck JSON.
+  Future<void> _migrateImages(BuildContext context) async {
+    final sync = AppServices.of(context).sync;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!sync.signedIn) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Sign in to Cloud sync first (⋮ → Cloud sync).')));
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Uploading images to the cloud…')),
+    );
+    try {
+      final r = await sync.migrateImagesToStorage();
+      messenger.showSnackBar(SnackBar(
+        content: Text(r.uploaded == 0 && r.failed == 0
+            ? 'All images are already in the cloud.'
+            : 'Uploaded ${r.uploaded} image(s)'
+                '${r.failed > 0 ? ', ${r.failed} failed — check the bucket setup' : ''}.'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));
     }
   }
 

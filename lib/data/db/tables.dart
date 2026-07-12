@@ -37,8 +37,12 @@ class Cards extends Table {
       .nullable()
       .references(Catalogues, #id, onDelete: KeyAction.setNull)();
 
-  // --- Visual anchor: stored as bytes so it works offline on every platform ---
+  // --- Visual anchor ---
+  // Bytes: the local copy (offline, instant). Url: the same image uploaded to
+  // Supabase Storage, so it can sync to other devices without bloating the
+  // deck JSON. A card may have bytes, a url, or both.
   BlobColumn get imageBytes => blob().nullable()();
+  TextColumn get imageUrl => text().nullable()();
   TextColumn get imageSource => text().nullable()(); // 'ai' | 'manual' | null
 
   // --- Lifecycle ---

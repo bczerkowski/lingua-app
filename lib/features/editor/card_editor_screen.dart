@@ -10,6 +10,7 @@ import '../../services/ai/prompt_builder.dart';
 import '../../services/assist/word_assist_service.dart';
 import '../../services/media/image_import_service.dart';
 import '../../theme.dart';
+import '../../widgets/card_image.dart';
 
 /// Create or edit a card. Supports editing every field, choosing a catalogue,
 /// deleting, AI image generation (with the manual-upload fallback if it fails).
@@ -33,6 +34,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   int? _catalogueId;
   bool _isCard = true;
   Uint8List? _imageBytes;
+  String? _imageUrl; // Storage URL (present when synced from another device)
   String? _imageSource;
   String? _imageError;
   bool _generating = false;
@@ -77,6 +79,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _catalogueId = c.catalogueId;
       _isCard = c.isCard;
       _imageBytes = c.imageBytes;
+      _imageUrl = c.imageUrl;
       _imageSource = c.imageSource;
     });
     // Additional Polish translations are best-effort; a failure here must not
@@ -516,7 +519,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                 height: 60,
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_imageBytes != null)
+            else if (_imageBytes != null || _imageUrl != null)
               // Large preview so the generated image is clearly visible.
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -527,8 +530,10 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                       aspectRatio: 16 / 9,
                       child: Container(
                         color: const Color(0xFFEDE7DC),
-                        child:
-                            Image.memory(_imageBytes!, fit: BoxFit.contain),
+                        child: CardImage(
+                            bytes: _imageBytes,
+                            url: _imageUrl,
+                            fit: BoxFit.contain),
                       ),
                     ),
                   ),
@@ -559,6 +564,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                             foregroundColor: const Color(0xFFB3261E)),
                         onPressed: () => setState(() {
                           _imageBytes = null;
+                          _imageUrl = null;
                           _imageSource = null;
                         }),
                       ),
@@ -652,6 +658,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       setState(() {
         _generating = false;
         _imageBytes = capped;
+        _imageUrl = null; // new local image → re-upload on save
         _imageSource = 'ai';
       });
     } else {
@@ -682,6 +689,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       if (!mounted) return;
       setState(() {
         _imageBytes = capped;
+        _imageUrl = null; // new local image → re-upload on save
         _imageSource = 'manual';
         _imageError = null;
       });
@@ -703,8 +711,16 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     }
     setState(() => _saving = true);
     final db = AppServices.of(context).db;
+    final sync = AppServices.of(context).sync;
     final now = DateTime.now();
     try {
+      // Upload a newly-added image to Storage first, so the synced deck carries
+      // only the URL (not the heavy base64). Local bytes are still kept for
+      // instant/offline display. If the upload fails, we just keep the bytes.
+      if (_imageBytes != null && _imageUrl == null && sync.signedIn) {
+        final url = await sync.uploadImage(widget.cardId ?? 0, _imageBytes!);
+        if (url != null) _imageUrl = url;
+      }
       int cardId;
       if (_isNew) {
         cardId = await db.into(db.cards).insert(CardsCompanion.insert(
@@ -716,6 +732,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
               tags: Value(_tagList.join(';')),
               catalogueId: Value(_catalogueId),
               imageBytes: Value(_imageBytes),
+              imageUrl: Value(_imageUrl),
               imageSource: Value(_imageSource),
               isCard: Value(_isCard),
               dueDate: Value(_isCard ? now : null),
@@ -732,6 +749,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           tags: Value(_tagList.join(';')),
           catalogueId: Value(_catalogueId),
           imageBytes: Value(_imageBytes),
+          imageUrl: Value(_imageUrl),
           imageSource: Value(_imageSource),
           isCard: Value(_isCard),
           updatedAt: Value(now),

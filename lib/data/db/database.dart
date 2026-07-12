@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -44,6 +44,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.addColumn(cards, cards.note);
           }
+          if (from < 5) {
+            await m.addColumn(cards, cards.imageUrl);
+          }
         },
         beforeOpen: (details) async {
           // Defensive: guarantee newer columns / tables exist even if a prior
@@ -55,6 +58,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (!names.contains('note')) {
             await customStatement('ALTER TABLE cards ADD COLUMN note TEXT');
+          }
+          if (!names.contains('image_url')) {
+            await customStatement('ALTER TABLE cards ADD COLUMN image_url TEXT');
           }
           // Ensure the meanings table exists AND has the expected columns;
           // recreate it if missing or malformed (e.g. a half-applied migration).
@@ -224,6 +230,16 @@ class AppDatabase extends _$AppDatabase {
         CardsCompanion(imageBytes: Value(bytes), imageSource: Value(source)),
       );
 
+  /// Cards with a local image but no cloud URL yet — the ones to upload.
+  Future<List<Flashcard>> cardsNeedingImageUpload() => (select(cards)
+        ..where((t) => t.imageBytes.isNotNull() & t.imageUrl.isNull()))
+      .get();
+
+  /// Records the Storage URL for a card after its image is uploaded.
+  Future<void> setImageUrl(int id, String url) =>
+      (update(cards)..where((t) => t.id.equals(id)))
+          .write(CardsCompanion(imageUrl: Value(url)));
+
   Future<void> deleteCard(int id) =>
       (delete(cards)..where((t) => t.id.equals(id))).go();
 
@@ -323,8 +339,12 @@ class AppDatabase extends _$AppDatabase {
             'tags': c.tags,
             'gender': c.gender,
             'catalogueId': c.catalogueId,
-            'imageBytes':
-                c.imageBytes == null ? null : base64Encode(c.imageBytes!),
+            // Once an image is in Storage (imageUrl set) we sync only the URL,
+            // never the heavy base64 — that's what keeps the deck JSON small.
+            'imageBytes': c.imageUrl != null || c.imageBytes == null
+                ? null
+                : base64Encode(c.imageBytes!),
+            'imageUrl': c.imageUrl,
             'imageSource': c.imageSource,
             'isCard': c.isCard,
             'createdAt': c.createdAt.millisecondsSinceEpoch,
@@ -402,6 +422,7 @@ class AppDatabase extends _$AppDatabase {
                 gender: Value(c['gender'] as String?),
                 catalogueId: Value(c['catalogueId'] as int?),
                 imageBytes: Value(img == null ? null : base64Decode(img)),
+                imageUrl: Value(c['imageUrl'] as String?),
                 imageSource: Value(c['imageSource'] as String?),
                 isCard: Value(c['isCard'] as bool? ?? false),
                 createdAt: Value(ms(c['createdAt'])),

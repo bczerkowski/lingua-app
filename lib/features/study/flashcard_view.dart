@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/db/database.dart';
 import '../../theme.dart';
+import '../../widgets/card_image.dart';
 import 'study_controller.dart';
 
 /// Picks a font size that shrinks as the text gets longer, so long example
@@ -403,19 +404,12 @@ class _ImageAnchor extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         // contain keeps the image's aspect ratio intact (no stretching/squishing).
-        child: card.imageBytes != null
-            ? Image.memory(card.imageBytes!, fit: BoxFit.contain)
-            : const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.image_outlined, color: AppTheme.muted, size: 30),
-                    SizedBox(height: 6),
-                    Text('No image yet — add one in the editor',
-                        style: TextStyle(color: AppTheme.muted, fontSize: 12)),
-                  ],
-                ),
-              ),
+        child: CardImage(
+          bytes: card.imageBytes,
+          url: card.imageUrl,
+          fit: BoxFit.contain,
+          richPlaceholder: true,
+        ),
       ),
     );
   }
