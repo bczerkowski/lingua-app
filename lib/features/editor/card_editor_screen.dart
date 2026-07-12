@@ -431,38 +431,47 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_imageBytes != null)
-              // Compact preview + change/remove (no longer fills the screen).
-              Row(
+              // Large preview so the generated image is clearly visible.
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.memory(_imageBytes!,
-                        width: 132, height: 88, fit: BoxFit.cover),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.image_outlined, size: 18),
-                          label: const Text('Change image'),
-                          onPressed: _pickFile,
-                        ),
-                        const SizedBox(height: 6),
-                        TextButton.icon(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: const Text('Remove image'),
-                          style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFFB3261E)),
-                          onPressed: () => setState(() {
-                            _imageBytes = null;
-                            _imageSource = null;
-                          }),
-                        ),
-                      ],
+                    borderRadius: BorderRadius.circular(12),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Container(
+                        color: const Color(0xFFEDE7DC),
+                        child:
+                            Image.memory(_imageBytes!, fit: BoxFit.contain),
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.auto_awesome, size: 18),
+                        label: const Text('Regenerate'),
+                        onPressed: _generating ? null : _generateImage,
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.image_outlined, size: 18),
+                        label: const Text('Change image'),
+                        onPressed: _pickFile,
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text('Remove image'),
+                        style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFB3261E)),
+                        onPressed: () => setState(() {
+                          _imageBytes = null;
+                          _imageSource = null;
+                        }),
+                      ),
+                    ],
                   ),
                 ],
               )
