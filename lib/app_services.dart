@@ -31,11 +31,13 @@ class AppServices {
         tts = tts ?? TtsService(),
         imageGen = imageGen ?? _defaultImageGen();
 
-  /// Uses the real backend when [kImageBackendEndpoint] is configured,
-  /// otherwise the demo provider that always fails into the manual flow.
+  /// Uses a custom backend proxy when [kImageBackendEndpoint] is configured,
+  /// otherwise the free keyless pollinations.ai generator (no setup needed).
   static ImageGenProvider _defaultImageGen() {
-    if (kImageBackendEndpoint.isEmpty) return DisabledImageGenProvider();
-    return ProxyImageGenProvider(Dio(), endpoint: kImageBackendEndpoint);
+    if (kImageBackendEndpoint.isNotEmpty) {
+      return ProxyImageGenProvider(Dio(), endpoint: kImageBackendEndpoint);
+    }
+    return PollinationsImageGenProvider(Dio());
   }
 
   static AppServices of(BuildContext context) {
