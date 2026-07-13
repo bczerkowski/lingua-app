@@ -84,15 +84,21 @@ class WordAssistService {
     return (prefs.getString(kGoogleKeyPref)?.trim() ?? '').isNotEmpty;
   }
 
-  /// Prompt for an example sentence (shared by the generator and Copy prompt).
+  /// Prompt for example sentences (shared by the generator and Copy prompt).
+  /// Produces THREE themed sentences: academic, aviation, and a very visual
+  /// one meant to drive image generation.
   static String examplePrompt(String english) =>
-      "You are helping build a language-learning flashcard. The English term "
-      "is \"$english\" — it may be a single word, a phrasal verb, an idiom, "
-      "or an expression (sometimes with a placeholder like 'something' or "
-      "'someone'). Write ONE natural, vivid example sentence that uses the "
-      "term correctly and idiomatically, replacing any placeholder with a "
-      "real word. 8 to 16 words, modern everyday context, easy for a learner. "
-      "Return ONLY the sentence: no quotes, no label, no explanation.";
+      "You are helping build a language-learning flashcard for the English "
+      "term \"$english\" (it may be a word, phrasal verb, idiom or expression; "
+      "replace any placeholder like 'something'/'someone' with a real word). "
+      "Write THREE example sentences that use the term correctly and "
+      "idiomatically, each on its OWN line, labelled EXACTLY like this:\n"
+      "Akademickie: <a formal, academic-register sentence>\n"
+      "Lotnicze: <a sentence set in an aviation / flying context>\n"
+      "Obrazowe: <a very vivid, concrete, visual scene describing what is "
+      "happening — rich in imagery, ideal for generating an illustration>\n"
+      "Return ONLY those three labelled lines. No intro, no quotes, no extra "
+      "text.";
 
   /// Prompt for a definition (shared by the generator and Copy prompt).
   static String definitionPrompt(String english) =>

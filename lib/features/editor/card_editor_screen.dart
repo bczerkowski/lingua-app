@@ -144,7 +144,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             ),
             _assistRow('Suggest Polish meaning', Icons.translate, 'pl',
                 _suggestPolish),
-            _field(_example, 'Example sentence', maxLines: 2, maxLength: 300),
+            _field(_example, 'Example sentence(s)', maxLines: 7, maxLength: 900),
             _genRowWithCopy('Generate example sentence', 'ex', _genExample,
                 () => WordAssistService.examplePrompt(_english.text.trim())),
             _field(_definition, 'English definition', maxLines: 2, maxLength: 500),
@@ -632,11 +632,21 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   /// external generator (e.g. Adobe Firefly), then brought back via
   /// "Change image" / "Paste screenshot".
   Future<void> _copyPrompt() async {
-    final prompt =
-        PromptBuilder.image(_english.text.trim(), _example.text.trim());
+    final prompt = PromptBuilder.image(_english.text.trim(), _visualScene());
     await Clipboard.setData(ClipboardData(text: prompt));
     if (!mounted) return;
     _toast('Prompt copied — paste it into Firefly or any generator');
+  }
+
+  /// The scene used for image generation: the "Obrazowe" (visual) example line
+  /// when present, otherwise the whole example text.
+  String _visualScene() {
+    for (final line in _example.text.split('\n')) {
+      final m = RegExp(r'^\s*(obrazowe|visual)\s*:\s*(.+)$', caseSensitive: false)
+          .firstMatch(line);
+      if (m != null) return m.group(2)!.trim();
+    }
+    return _example.text.trim();
   }
 
   Future<void> _generateImage() async {
@@ -650,7 +660,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _imageError = null;
     });
     final provider = AppServices.of(context).imageGen;
-    final result = await provider.generate(word, _example.text.trim());
+    final result = await provider.generate(word, _visualScene());
     if (!mounted) return;
     if (result.ok && result.bytes != null) {
       final capped = await _capImage(result.bytes!);
