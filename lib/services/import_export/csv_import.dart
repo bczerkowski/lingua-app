@@ -1,8 +1,8 @@
 import 'dart:convert';
 
+import 'package:archive/archive.dart';
 import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
-import 'package:excel/excel.dart';
 
 import '../../data/db/database.dart';
 
@@ -41,14 +41,80 @@ class CsvImporter {
     return _parseRows(rows);
   }
 
-  /// Parse an .xlsx workbook (first sheet).
+  /// Parse an .xlsx workbook (first sheet). Reads shared- and inline-string
+  /// cells directly from the zip, which is more robust than heavy xlsx
+  /// libraries that choke on some exports.
   List<ParsedEntry> parseXlsx(List<int> bytes) {
-    final book = Excel.decodeBytes(bytes);
-    if (book.tables.isEmpty) return const [];
-    final sheet = book.tables.values.first;
+    final archive = ZipDecoder().decodeBytes(bytes);
+    ArchiveFile? file(String name) {
+      for (final a in archive.files) {
+        if (a.name == name) return a;
+      }
+      return null;
+    }
+
+    String content(ArchiveFile a) =>
+        utf8.decode(a.content as List<int>, allowMalformed: true);
+
+    // Shared strings table (optional — some files use inline strings instead).
+    final shared = <String>[];
+    final ss = file('xl/sharedStrings.xml');
+    if (ss != null) {
+      final xml = content(ss);
+      for (final si in RegExp(r'<si>([\s\S]*?)</si>').allMatches(xml)) {
+        final buf = StringBuffer();
+        for (final t
+            in RegExp(r'<t[^>]*>([\s\S]*?)</t>').allMatches(si.group(1)!)) {
+          buf.write(_xmlUnescape(t.group(1)!));
+        }
+        shared.add(buf.toString());
+      }
+    }
+
+    var sheet = file('xl/worksheets/sheet1.xml');
+    sheet ??= archive.files
+        .where((a) =>
+            a.name.startsWith('xl/worksheets/') && a.name.endsWith('.xml'))
+        .fold<ArchiveFile?>(null, (p, e) => p ?? e);
+    if (sheet == null) return const [];
+    final xml = content(sheet);
+
+    final grid = <int, Map<int, String>>{};
+    var maxCol = 0;
+    for (final m in RegExp(r'<c r="([A-Z]+)(\d+)"([^>]*)>([\s\S]*?)</c>')
+        .allMatches(xml)) {
+      final col = _colIndex(m.group(1)!);
+      final row = int.parse(m.group(2)!);
+      final attrs = m.group(3)!;
+      final body = m.group(4)!;
+      String val = '';
+      if (attrs.contains('t="inlineStr"')) {
+        final buf = StringBuffer();
+        for (final t in RegExp(r'<t[^>]*>([\s\S]*?)</t>').allMatches(body)) {
+          buf.write(_xmlUnescape(t.group(1)!));
+        }
+        val = buf.toString();
+      } else {
+        final v = RegExp(r'<v>([\s\S]*?)</v>').firstMatch(body)?.group(1);
+        if (v != null) {
+          if (attrs.contains('t="s"')) {
+            final i = int.tryParse(v.trim());
+            val = (i != null && i >= 0 && i < shared.length) ? shared[i] : '';
+          } else {
+            val = _xmlUnescape(v);
+          }
+        }
+      }
+      grid.putIfAbsent(row, () => {})[col] = val;
+      if (col > maxCol) maxCol = col;
+    }
+
+    final rowNums = grid.keys.toList()..sort();
     final rows = <List<String>>[
-      for (final row in sheet.rows) [for (final c in row) _cellStr(c)]
+      for (final n in rowNums)
+        [for (var c = 0; c <= maxCol; c++) grid[n]![c] ?? '']
     ];
+
     // Require a readable header so a garbled decode never creates junk cards.
     final header =
         rows.isEmpty ? const <String>[] : rows.first.map(_norm).toList();
@@ -127,10 +193,23 @@ class CsvImporter {
 
   static String _norm(String s) => s.trim().toLowerCase();
 
-  static String _cellStr(dynamic cell) {
-    final v = cell?.value;
-    return v == null ? '' : v.toString();
+  /// Spreadsheet column letters -> 0-based index (A=0, B=1, … AA=26).
+  static int _colIndex(String s) {
+    var n = 0;
+    for (final code in s.codeUnits) {
+      n = n * 26 + (code - 64);
+    }
+    return n - 1;
   }
+
+  static String _xmlUnescape(String s) => s
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAllMapped(RegExp(r'&#(\d+);'),
+          (m) => String.fromCharCode(int.parse(m.group(1)!)))
+      .replaceAll('&amp;', '&');
 
   String? _nullIfEmpty(String s) => s.isEmpty ? null : s;
 }
