@@ -11,7 +11,9 @@ class ParsedEntry {
   final String polish;
   final String? example;
   final String? definition;
-  const ParsedEntry(this.english, this.polish, this.example, this.definition);
+  final String? note;
+  const ParsedEntry(
+      this.english, this.polish, this.example, this.definition, this.note);
 }
 
 /// Parses CSV bytes (e.g. a Quizlet export) into entries.
@@ -49,6 +51,8 @@ class CsvImporter {
     final iAEx = hasHeader ? idx('answer example') : -1;
     final iQHint = hasHeader ? idx('question hint') : -1;
     final iAHint = hasHeader ? idx('answer hint') : -1;
+    // Optional personal note (usage: formal/informal, top synonyms, etc.).
+    final iNote = hasHeader ? idx('note') : -1;
 
     final dataRows = hasHeader ? rows.skip(1) : rows;
     final out = <ParsedEntry>[];
@@ -68,6 +72,7 @@ class CsvImporter {
         polish,
         _nullIfEmpty(pick(iQEx, iAEx)),
         _nullIfEmpty(pick(iQHint, iAHint)),
+        _nullIfEmpty(cell(iNote)),
       ));
     }
     return out;
@@ -86,6 +91,7 @@ class CsvImporter {
             polish: e.polish,
             exampleSentence: Value(e.example),
             englishDefinition: Value(e.definition),
+            note: Value(e.note),
             catalogueId: Value(catalogueId),
             isCard: const Value(true),
             dueDate: Value(now),
