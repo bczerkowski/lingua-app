@@ -37,6 +37,9 @@ dependencies:
   # CSV import (e.g. Quizlet exports).
   csv: ^6.0.0
 
+  # Direct .xlsx import.
+  excel: ^4.0.0
+
   # Browser APIs for the CSV-template download (web only).
   web: ^1.1.0
 

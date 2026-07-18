@@ -1119,7 +1119,7 @@ class _ManageMenu extends StatelessWidget {
   Future<void> _importCsv(BuildContext context) async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['csv'],
+      allowedExtensions: const ['csv', 'xlsx'],
       withData: true,
     );
     if (picked == null || picked.files.isEmpty) return;
@@ -1128,7 +1128,17 @@ class _ManageMenu extends StatelessWidget {
     if (bytes == null || !context.mounted) return;
 
     final importer = CsvImporter(db);
-    final entries = importer.parse(bytes);
+    final isXlsx = file.name.toLowerCase().endsWith('.xlsx');
+    List<ParsedEntry> entries;
+    try {
+      entries = isXlsx ? importer.parseXlsx(bytes) : importer.parse(bytes);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      }
+      return;
+    }
     if (entries.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1140,7 +1150,7 @@ class _ManageMenu extends StatelessWidget {
 
     // Suggest a category name derived from the file (Quizlet: "set-<id>-name").
     final suggested = file.name
-        .replaceAll(RegExp(r'\.csv$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\.(csv|xlsx)$', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^set-\d+-'), '')
         .replaceAll(RegExp(r'[-_]+'), ' ')
         .trim();

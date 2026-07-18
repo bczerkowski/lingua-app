@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
+import 'package:excel/excel.dart';
 
 import '../../data/db/database.dart';
 
-/// One parsed entry from a CSV before insertion.
+/// One parsed entry from a CSV/XLSX before insertion.
 class ParsedEntry {
   final String english;
   final String polish;
@@ -16,28 +17,52 @@ class ParsedEntry {
       this.english, this.polish, this.example, this.definition, this.note);
 }
 
-/// Parses CSV bytes (e.g. a Quizlet export) into entries.
+/// Parses CSV or XLSX bytes into entries.
 ///
-/// Recognized headers (case-insensitive): `question`, `answer`,
-/// `question example`, `question hint`. Falls back to:
-/// column 0 = English term, column 1 = Polish translation.
+/// Recognized headers (case-insensitive): `question` (English), `answer`
+/// (Polish), `question/answer example`, `question/answer hint`, `note`.
+/// Without a header row it falls back to column 0 = English, column 1 = Polish.
 class CsvImporter {
   final AppDatabase db;
   CsvImporter(this.db);
 
+  /// Parse CSV bytes.
   List<ParsedEntry> parse(List<int> bytes) {
     var text = utf8.decode(bytes, allowMalformed: true);
     if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
       text = text.substring(1); // strip UTF-8 BOM
     }
-    // Normalize CRLF/CR so a single eol works regardless of the source OS.
     text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
+    final raw = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
         .convert(text);
-    if (rows.isEmpty) return const [];
+    final rows = [
+      for (final r in raw) [for (final c in r) c.toString()]
+    ];
+    return _parseRows(rows);
+  }
 
-    // Detect a header row and map columns by name.
-    final header = rows.first.map((e) => e.toString().trim().toLowerCase()).toList();
+  /// Parse an .xlsx workbook (first sheet).
+  List<ParsedEntry> parseXlsx(List<int> bytes) {
+    final book = Excel.decodeBytes(bytes);
+    if (book.tables.isEmpty) return const [];
+    final sheet = book.tables.values.first;
+    final rows = <List<String>>[
+      for (final row in sheet.rows) [for (final c in row) _cellStr(c)]
+    ];
+    // Require a readable header so a garbled decode never creates junk cards.
+    final header =
+        rows.isEmpty ? const <String>[] : rows.first.map(_norm).toList();
+    if (!header.contains('question') || !header.contains('answer')) {
+      throw const FormatException(
+          'Could not read the spreadsheet headers — save it as CSV UTF-8 and '
+          'import that instead.');
+    }
+    return _parseRows(rows);
+  }
+
+  List<ParsedEntry> _parseRows(List<List<String>> rows) {
+    if (rows.isEmpty) return const [];
+    final header = rows.first.map(_norm).toList();
     int idx(String name) => header.indexOf(name);
     final qi = idx('question');
     final ai = idx('answer');
@@ -45,8 +70,7 @@ class CsvImporter {
 
     final iEnglish = hasHeader ? qi : 0;
     final iPolish = hasHeader ? ai : 1;
-    // Accept the example/definition from either the question- or answer-side
-    // column, so files that fill "answer example" / "answer hint" still work.
+    // Example/definition may sit on the question- or answer-side column.
     final iQEx = hasHeader ? idx('question example') : -1;
     final iAEx = hasHeader ? idx('answer example') : -1;
     final iQHint = hasHeader ? idx('question hint') : -1;
@@ -57,8 +81,7 @@ class CsvImporter {
     final dataRows = hasHeader ? rows.skip(1) : rows;
     final out = <ParsedEntry>[];
     for (final r in dataRows) {
-      String cell(int i) =>
-          (i >= 0 && i < r.length) ? r[i].toString().trim() : '';
+      String cell(int i) => (i >= 0 && i < r.length) ? r[i].trim() : '';
       String pick(int a, int b) {
         final va = cell(a);
         return va.isNotEmpty ? va : cell(b);
@@ -100,6 +123,13 @@ class CsvImporter {
       }
     });
     return entries.length;
+  }
+
+  static String _norm(String s) => s.trim().toLowerCase();
+
+  static String _cellStr(dynamic cell) {
+    final v = cell?.value;
+    return v == null ? '' : v.toString();
   }
 
   String? _nullIfEmpty(String s) => s.isEmpty ? null : s;
