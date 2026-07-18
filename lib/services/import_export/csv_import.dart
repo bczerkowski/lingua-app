@@ -43,22 +43,31 @@ class CsvImporter {
 
     final iEnglish = hasHeader ? qi : 0;
     final iPolish = hasHeader ? ai : 1;
-    final iExample = hasHeader ? idx('question example') : -1;
-    final iDef = hasHeader ? idx('question hint') : -1;
+    // Accept the example/definition from either the question- or answer-side
+    // column, so files that fill "answer example" / "answer hint" still work.
+    final iQEx = hasHeader ? idx('question example') : -1;
+    final iAEx = hasHeader ? idx('answer example') : -1;
+    final iQHint = hasHeader ? idx('question hint') : -1;
+    final iAHint = hasHeader ? idx('answer hint') : -1;
 
     final dataRows = hasHeader ? rows.skip(1) : rows;
     final out = <ParsedEntry>[];
     for (final r in dataRows) {
       String cell(int i) =>
           (i >= 0 && i < r.length) ? r[i].toString().trim() : '';
+      String pick(int a, int b) {
+        final va = cell(a);
+        return va.isNotEmpty ? va : cell(b);
+      }
+
       final english = cell(iEnglish);
       final polish = cell(iPolish);
       if (english.isEmpty || polish.isEmpty) continue;
       out.add(ParsedEntry(
         english,
         polish,
-        _nullIfEmpty(cell(iExample)),
-        _nullIfEmpty(cell(iDef)),
+        _nullIfEmpty(pick(iQEx, iAEx)),
+        _nullIfEmpty(pick(iQHint, iAHint)),
       ));
     }
     return out;

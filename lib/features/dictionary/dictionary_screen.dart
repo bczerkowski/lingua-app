@@ -168,7 +168,10 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(db: db, onStudyTap: widget.onStudyTap),
+            _Header(
+                db: db,
+                onStudyTap: widget.onStudyTap,
+                catalogueId: _filterCatId),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
               child: TextField(
@@ -751,7 +754,8 @@ class _SyncButton extends StatelessWidget {
 /// Overflow menu with self-service data recovery actions.
 class _ManageMenu extends StatelessWidget {
   final AppDatabase db;
-  const _ManageMenu({required this.db});
+  final int? catalogueId; // current category filter (for the image export)
+  const _ManageMenu({required this.db, this.catalogueId});
 
   @override
   Widget build(BuildContext context) {
@@ -1022,7 +1026,9 @@ class _ManageMenu extends StatelessWidget {
       const SnackBar(content: Text('Generating image…')),
     );
     try {
-      final entries = await db.searchEntries('').first;
+      // Export exactly what the user is looking at — the current category.
+      final entries =
+          await db.searchEntries('', catalogueId: catalogueId).first;
       if (entries.isEmpty) {
         messenger.showSnackBar(
           const SnackBar(content: Text('No entries to export.')),
@@ -1188,7 +1194,9 @@ class _ManageMenu extends StatelessWidget {
 class _Header extends StatelessWidget {
   final AppDatabase db;
   final VoidCallback onStudyTap;
-  const _Header({required this.db, required this.onStudyTap});
+  final int? catalogueId; // current category filter (for the image export)
+  const _Header(
+      {required this.db, required this.onStudyTap, this.catalogueId});
 
   @override
   Widget build(BuildContext context) {
@@ -1208,7 +1216,7 @@ class _Header extends StatelessWidget {
                         color: AppTheme.muted)),
               ),
               const _SyncButton(),
-              _ManageMenu(db: db),
+              _ManageMenu(db: db, catalogueId: catalogueId),
             ],
           ),
           Text('Lexicon',
