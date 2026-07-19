@@ -21,6 +21,39 @@ class DeckStats {
   });
 }
 
+/// A lightweight dictionary-row projection that deliberately EXCLUDES the heavy
+/// image blob. The list view only needs a thumbnail (from the URL) or a
+/// placeholder, so pulling thousands of blobs into memory (which froze the UI
+/// on mobile for large decks) is avoided. The full card + bytes load lazily in
+/// the editor.
+class EntryLite {
+  final int id;
+  final String english;
+  final String polish;
+  final String? example;
+  final String tags;
+  final int? catalogueId;
+  final String? imageUrl;
+  final bool isCard;
+  final bool isFavorite;
+  final bool hasLocalImage; // imageBytes IS NOT NULL (not loaded here)
+  const EntryLite({
+    required this.id,
+    required this.english,
+    required this.polish,
+    required this.example,
+    required this.tags,
+    required this.catalogueId,
+    required this.imageUrl,
+    required this.isCard,
+    required this.isFavorite,
+    required this.hasLocalImage,
+  });
+
+  bool get hasImage =>
+      hasLocalImage || (imageUrl != null && imageUrl!.isNotEmpty);
+}
+
 @DriftDatabase(tables: [Catalogues, Cards, Meanings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
@@ -195,6 +228,57 @@ class AppDatabase extends _$AppDatabase {
     // gathered under the Learned filter — and never come up in study.
     sel.where((t) => t.suspended.equals(learnedOnly));
     return sel.watch();
+  }
+
+  /// The list view's data source: same filtering as [searchEntries] but WITHOUT
+  /// the image blob, so a huge deck stays snappy on mobile.
+  Stream<List<EntryLite>> searchEntriesLite(String query,
+      {int? catalogueId,
+      bool favoritesOnly = false,
+      bool learnedOnly = false}) {
+    final q = query.trim();
+    final hasBytes = cards.imageBytes.isNotNull();
+    final sel = selectOnly(cards)
+      ..addColumns([
+        cards.id,
+        cards.english,
+        cards.polish,
+        cards.exampleSentence,
+        cards.tags,
+        cards.catalogueId,
+        cards.imageUrl,
+        cards.isCard,
+        cards.isFavorite,
+        hasBytes,
+      ])
+      ..orderBy([OrderingTerm(expression: cards.english)])
+      ..limit(5000);
+
+    Expression<bool> filter = cards.suspended.equals(learnedOnly);
+    if (q.isNotEmpty) {
+      final like = '%$q%';
+      filter = filter & (cards.polish.like(like) | cards.english.like(like));
+    }
+    if (catalogueId != null) {
+      filter = filter & cards.catalogueId.equals(catalogueId);
+    }
+    if (favoritesOnly) filter = filter & cards.isFavorite.equals(true);
+    sel.where(filter);
+
+    return sel
+        .map((r) => EntryLite(
+              id: r.read(cards.id)!,
+              english: r.read(cards.english)!,
+              polish: r.read(cards.polish)!,
+              example: r.read(cards.exampleSentence),
+              tags: r.read(cards.tags) ?? '',
+              catalogueId: r.read(cards.catalogueId),
+              imageUrl: r.read(cards.imageUrl),
+              isCard: r.read(cards.isCard) ?? false,
+              isFavorite: r.read(cards.isFavorite) ?? false,
+              hasLocalImage: r.read(hasBytes) ?? false,
+            ))
+        .watch();
   }
 
   /// Mark an entry as learned (suspended = retired from study & normal views)

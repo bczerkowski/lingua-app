@@ -155,15 +155,15 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
 
   /// Produces a flat render list: section-header strings (when grouping) mixed
   /// with [Flashcard]s, applying alphabetical sort (by English) when enabled.
-  List<Object> _buildRows(List<Flashcard> items, Map<int, String> names) {
-    int byEnglish(Flashcard a, Flashcard b) =>
+  List<Object> _buildRows(List<EntryLite> items, Map<int, String> names) {
+    int byEnglish(EntryLite a, EntryLite b) =>
         a.english.toLowerCase().compareTo(b.english.toLowerCase());
 
     final list = [...items];
     if (_alphabetical) list.sort(byEnglish);
     if (!_groupByCategory) return list;
 
-    final groups = <int?, List<Flashcard>>{};
+    final groups = <int?, List<EntryLite>>{};
     for (final c in list) {
       groups.putIfAbsent(c.catalogueId, () => []).add(c);
     }
@@ -217,10 +217,10 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
               ),
             ),
             Expanded(
-              child: StreamBuilder<List<Flashcard>>(
-                // Search + category filter are applied in the query so the
-                // result is always correct, even for large decks.
-                stream: db.searchEntries(_query,
+              child: StreamBuilder<List<EntryLite>>(
+                // Lightweight query (no image blobs) so a big deck stays
+                // smooth on mobile; filtering is done in the query.
+                stream: db.searchEntriesLite(_query,
                     catalogueId: (_favoritesOnly || _learnedOnly)
                         ? null
                         : _filterCatId,
@@ -230,7 +230,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                   final loading =
                       snap.connectionState == ConnectionState.waiting &&
                           !snap.hasData;
-                  final filtered = snap.data ?? const <Flashcard>[];
+                  final filtered = snap.data ?? const <EntryLite>[];
                   return Column(
                     children: [
                       _ActionBar(
@@ -341,22 +341,22 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                               itemBuilder: (context, i) {
                                 final row = rows[i];
                                 if (row is String) return _SectionHeader(row);
-                                final card = row as Flashcard;
+                                final entry = row as EntryLite;
                                 return _EntryRow(
-                                  card: card,
+                                  entry: entry,
                                   services: services,
                                   db: db,
                                   compact: _compact,
                                   selectMode: _selectMode,
-                                  selected: _selected.contains(card.id),
+                                  selected: _selected.contains(entry.id),
                                   onTap: () {
                                     if (_selectMode) {
-                                      _toggle(card.id);
+                                      _toggle(entry.id);
                                     } else {
-                                      _openEditor(context, card.id);
+                                      _openEditor(context, entry.id);
                                     }
                                   },
-                                  onLongPress: () => _enterSelect(card.id),
+                                  onLongPress: () => _enterSelect(entry.id),
                                 );
                               },
                             );
@@ -705,7 +705,7 @@ class _SectionHeader extends StatelessWidget {
 /// A rich dictionary row: target line, example sentence, and a tag strip
 /// (part of speech, gender, topics). In select mode it shows a checkbox.
 class _EntryRow extends StatelessWidget {
-  final Flashcard card;
+  final EntryLite entry;
   final AppServices services;
   final AppDatabase db;
   final bool compact;
@@ -714,7 +714,7 @@ class _EntryRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   const _EntryRow({
-    required this.card,
+    required this.entry,
     required this.services,
     required this.db,
     required this.compact,
@@ -727,7 +727,7 @@ class _EntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (compact) return _buildCompact(context);
-    final allTags = card.tags
+    final allTags = entry.tags
         .split(';')
         .map((t) => t.trim())
         .where((t) => t.isNotEmpty)
@@ -770,9 +770,10 @@ class _EntryRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _targetLine(),
-                      if (card.exampleSentence != null) ...[
+                      if (entry.example != null &&
+                          entry.example!.trim().isNotEmpty) ...[
                         const SizedBox(height: 6),
-                        Text('“${card.exampleSentence}”',
+                        Text('“${entry.example}”',
                             style: const TextStyle(
                                 fontSize: 15,
                                 height: 1.3,
@@ -834,7 +835,7 @@ class _EntryRow extends StatelessWidget {
                     text: TextSpan(
                       children: [
                         TextSpan(
-                          text: card.english,
+                          text: entry.english,
                           style: GoogleFonts.sourceSerif4(
                               fontSize: 16.5,
                               fontWeight: FontWeight.w600,
@@ -845,7 +846,7 @@ class _EntryRow extends StatelessWidget {
                             style: TextStyle(
                                 fontSize: 15, color: AppTheme.muted)),
                         TextSpan(
-                          text: card.polish,
+                          text: entry.polish,
                           style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
@@ -857,7 +858,7 @@ class _EntryRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 InkWell(
-                  onTap: () => services.tts.speak(card.english, 'en-US'),
+                  onTap: () => services.tts.speak(entry.english, 'en-US'),
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(6),
@@ -876,7 +877,7 @@ class _EntryRow extends StatelessWidget {
   }
 
   Widget _addButtonCompact(BuildContext context) {
-    if (card.isCard) {
+    if (entry.isCard) {
       return Container(
         width: 34,
         height: 34,
@@ -894,7 +895,7 @@ class _EntryRow extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () async {
-          await db.promoteToCard(card.id);
+          await db.promoteToCard(entry.id);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Added to study deck')),
@@ -921,13 +922,13 @@ class _EntryRow extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
       visualDensity: VisualDensity.compact,
       iconSize: size,
-      icon: Icon(card.isFavorite
+      icon: Icon(entry.isFavorite
           ? Icons.favorite_rounded
           : Icons.favorite_border_rounded),
-      color: card.isFavorite ? AppTheme.coral : AppTheme.muted,
+      color: entry.isFavorite ? AppTheme.coral : AppTheme.muted,
       tooltip:
-          card.isFavorite ? 'Remove from favourites' : 'Add to favourites',
-      onPressed: () => db.setFavorite(card.id, !card.isFavorite),
+          entry.isFavorite ? 'Remove from favourites' : 'Add to favourites',
+      onPressed: () => db.setFavorite(entry.id, !entry.isFavorite),
     );
   }
 
@@ -936,23 +937,23 @@ class _EntryRow extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         // English is the headword (shown first), Polish is the translation.
-        Text(card.english,
+        Text(entry.english,
             style: GoogleFonts.sourceSerif4(
                 fontSize: 21,
                 fontWeight: FontWeight.w600,
                 color: Colors.black)),
         InkWell(
-          onTap: () => services.tts.speak(card.english, 'en-US'),
+          onTap: () => services.tts.speak(entry.english, 'en-US'),
           customBorder: const CircleBorder(),
           child: const Padding(
             padding: EdgeInsets.all(3),
             child: Icon(Icons.volume_up_rounded, size: 19, color: AppTheme.muted),
           ),
         ),
-        // A small thumbnail of the card's image sits between the two terms
-        // (falls back to a dot when the card has no image).
-        if (card.imageBytes != null ||
-            (card.imageUrl != null && card.imageUrl!.isNotEmpty))
+        // A small thumbnail between the two terms. To keep big decks snappy we
+        // never load the local blob here: use the Storage URL if present, else
+        // a light placeholder icon when the card has only a local image.
+        if (entry.imageUrl != null && entry.imageUrl!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ClipRRect(
@@ -960,12 +961,14 @@ class _EntryRow extends StatelessWidget {
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: CardImage(
-                    bytes: card.imageBytes,
-                    url: card.imageUrl,
-                    fit: BoxFit.cover),
+                child: CardImage(url: entry.imageUrl, fit: BoxFit.cover),
               ),
             ),
+          )
+        else if (entry.hasLocalImage)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Icon(Icons.image_rounded, size: 22, color: AppTheme.muted),
           )
         else
           const Padding(
@@ -973,7 +976,7 @@ class _EntryRow extends StatelessWidget {
             child:
                 Text('·', style: TextStyle(fontSize: 19, color: AppTheme.muted)),
           ),
-        Text(card.polish,
+        Text(entry.polish,
             style: const TextStyle(
                 fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
       ],
@@ -1018,7 +1021,7 @@ class _EntryRow extends StatelessWidget {
       );
 
   Widget _addButton(BuildContext context) {
-    if (card.isCard) {
+    if (entry.isCard) {
       return Container(
         width: 54,
         height: 54,
@@ -1038,7 +1041,7 @@ class _EntryRow extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () async {
-          await db.promoteToCard(card.id);
+          await db.promoteToCard(entry.id);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Added to study deck')),
