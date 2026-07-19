@@ -241,9 +241,13 @@ class _StudyScreenState extends State<StudyScreen> {
   }
 }
 
-/// Horizontal "All / category" chips to choose which category to study.
+/// "All / category" chips to choose which category to study.
+///
+/// Collapsed (default): a single horizontally-scrolling row. Expanded: every
+/// folder wrapped across rows so all are reachable on desktop, where a scroll
+/// row hides folders past the screen edge. The expand toggle is pinned right.
 /// Hidden when the user has no categories.
-class _StudyCategoryBar extends StatelessWidget {
+class _StudyCategoryBar extends StatefulWidget {
   final AppDatabase db;
   final int? selectedId;
   final ValueChanged<int?> onSelect;
@@ -251,21 +255,70 @@ class _StudyCategoryBar extends StatelessWidget {
       {required this.db, required this.selectedId, required this.onSelect});
 
   @override
+  State<_StudyCategoryBar> createState() => _StudyCategoryBarState();
+}
+
+class _StudyCategoryBarState extends State<_StudyCategoryBar> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Catalogue>>(
-      stream: db.watchCatalogues(),
+      stream: widget.db.watchCatalogues(),
       builder: (context, snap) {
         final cats = snap.data ?? const <Catalogue>[];
         if (cats.isEmpty) return const SizedBox.shrink();
+
+        final pills = <Widget>[
+          _pill('All', widget.selectedId == null, () => widget.onSelect(null)),
+          for (final c in cats)
+            _pill(c.name, widget.selectedId == c.id,
+                () => widget.onSelect(c.id)),
+        ];
+
+        final toggle = IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          visualDensity: VisualDensity.compact,
+          iconSize: 24,
+          icon: Icon(_expanded
+              ? Icons.expand_less_rounded
+              : Icons.expand_more_rounded),
+          color: AppTheme.coralDark,
+          tooltip: _expanded ? 'Collapse folders' : 'Show all folders',
+          onPressed: () => setState(() => _expanded = !_expanded),
+        );
+
+        if (_expanded) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 6, 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                ),
+                toggle,
+              ],
+            ),
+          );
+        }
         return SizedBox(
           height: 46,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
             children: [
-              _pill('All', selectedId == null, () => onSelect(null)),
-              for (final c in cats)
-                _pill(c.name, selectedId == c.id, () => onSelect(c.id)),
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(left: 16, right: 4),
+                  children: [
+                    for (final p in pills)
+                      Padding(
+                          padding: const EdgeInsets.only(right: 8), child: p),
+                  ],
+                ),
+              ),
+              toggle,
             ],
           ),
         );
@@ -274,21 +327,18 @@ class _StudyCategoryBar extends StatelessWidget {
   }
 
   Widget _pill(String label, bool selected, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        showCheckmark: false,
-        labelStyle: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : AppTheme.ink),
-        selectedColor: AppTheme.coral,
-        backgroundColor: AppTheme.surface,
-        side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
-      ),
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      showCheckmark: false,
+      labelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: selected ? Colors.white : AppTheme.ink),
+      selectedColor: AppTheme.coral,
+      backgroundColor: AppTheme.surface,
+      side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
     );
   }
 }
