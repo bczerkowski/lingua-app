@@ -28,12 +28,19 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
   final ImageImportService _importer = ImageImportService();
   final FocusNode _focus = FocusNode();
 
+  static const int _kBatchSize = 3;
+
   List<Flashcard> _cards = const [];
   int _index = 0;
   bool _loading = true;
   bool _busy = false;
-  Uint8List? _pending; // pasted image awaiting confirmation
+  Uint8List? _pending; // pasted image awaiting confirmation (single mode)
   String? _error;
+
+  // Batch mode: generate a numbered prompt for several terms at once, then
+  // paste the returned images into ordered slots.
+  bool _batchMode = true;
+  final List<Uint8List?> _slots = []; // one per card in the current batch
 
   bool _started = false;
 
@@ -61,6 +68,7 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
       _cards = list;
       _index = 0;
       _loading = false;
+      _resetSlots();
     });
     _focus.requestFocus();
   }
@@ -174,6 +182,114 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
     _focus.requestFocus();
   }
 
+  // --- Batch mode -----------------------------------------------------------
+
+  /// The cards in the current batch (up to [_kBatchSize], fewer at the end).
+  List<Flashcard> get _batchCards {
+    final end = (_index + _kBatchSize).clamp(0, _cards.length);
+    return _index < _cards.length ? _cards.sublist(_index, end) : const [];
+  }
+
+  /// Resize the slot list to match the current batch, clearing any images.
+  void _resetSlots() {
+    _slots
+      ..clear()
+      ..addAll(List<Uint8List?>.filled(_batchCards.length, null));
+  }
+
+  /// The scene label used per numbered item: quotes the word so the order is
+  /// easy to match, then the visual scene.
+  String _sceneLabel(Flashcard c) => '"${c.english}": ${_scene(c)}';
+
+  Future<void> _copyBatchPrompt() async {
+    final batch = _batchCards;
+    if (batch.isEmpty) return;
+    final prompt =
+        PromptBuilder.imageBatch([for (final c in batch) _sceneLabel(c)]);
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (mounted) {
+      _toast('Prompt for ${batch.length} copied — paste it into Gemini');
+    }
+  }
+
+  Future<void> _pasteIntoSlot(int slot) async {
+    final res = await _importer.pasteFromClipboard();
+    await _applyToSlot(slot, res);
+  }
+
+  Future<void> _pickFileIntoSlot(int slot) async {
+    final res = await _importer.pickFromFile();
+    await _applyToSlot(slot, res);
+  }
+
+  /// Paste into the next empty slot (drives the Ctrl+V shortcut).
+  Future<void> _pasteNextEmpty() async {
+    final slot = _slots.indexWhere((e) => e == null);
+    if (slot == -1) {
+      _toast('All ${_slots.length} slots filled — Save & next');
+      return;
+    }
+    await _pasteIntoSlot(slot);
+  }
+
+  Future<void> _applyToSlot(int slot, ImageImportResult res) async {
+    if (!mounted || res.cancelled) return;
+    if (!res.ok) {
+      setState(() => _error = res.error);
+      return;
+    }
+    final capped = await _capImage(res.bytes!);
+    if (!mounted || slot >= _slots.length) return;
+    setState(() {
+      _slots[slot] = capped;
+      _error = null;
+    });
+  }
+
+  Future<void> _saveBatch() async {
+    if (_busy) return;
+    final batch = _batchCards;
+    final count = batch.length;
+    if (!_slots.any((e) => e != null)) {
+      _toast('Paste at least one image first');
+      return;
+    }
+    setState(() => _busy = true);
+    final services = AppServices.of(context);
+    try {
+      for (var i = 0; i < count; i++) {
+        final bytes = _slots[i];
+        if (bytes == null) continue;
+        await services.db.setImage(batch[i].id, bytes, 'manual');
+        if (services.sync.signedIn) {
+          try {
+            final url = await services.sync.uploadImage(batch[i].id, bytes);
+            await services.db.setImageUrl(batch[i].id, url);
+          } catch (_) {/* keep local bytes; cloud sync can retry */}
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Save failed: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _index += count; // advance past the whole batch (empty slots are skipped)
+      _error = null;
+      _resetSlots();
+    });
+    _focus.requestFocus();
+  }
+
+  void _skipBatch() {
+    setState(() {
+      _index += _batchCards.length;
+      _error = null;
+      _resetSlots();
+    });
+    _focus.requestFocus();
+  }
+
   void _toast(String msg) => ScaffoldMessenger.of(context)
     ..clearSnackBars()
     ..showSnackBar(SnackBar(content: Text(msg)));
@@ -197,10 +313,18 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
                       bindings: {
                         const SingleActivator(LogicalKeyboardKey.keyV,
                             control: true): () {
-                          if (_pending == null) _paste();
+                          if (_batchMode) {
+                            _pasteNextEmpty();
+                          } else if (_pending == null) {
+                            _paste();
+                          }
                         },
                         const SingleActivator(LogicalKeyboardKey.enter): () {
-                          if (_pending != null) _saveAndNext();
+                          if (_batchMode) {
+                            _saveBatch();
+                          } else if (_pending != null) {
+                            _saveAndNext();
+                          }
                         },
                       },
                       child: Focus(
@@ -238,6 +362,10 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
     final c = _current!;
     final screenW = MediaQuery.of(context).size.width;
     final maxW = screenW < 620 ? screenW : 640.0;
+    final batchLen = _batchCards.length;
+    final counter = _batchMode
+        ? '${_index + 1}–${_index + batchLen} / $total  ·  ${total - _index} left'
+        : '${_index + 1} / $total  ·  ${total - _index} left';
     return Column(
       children: [
         LinearProgressIndicator(
@@ -246,8 +374,31 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text('${_index + 1} / $total  ·  ${total - _index} left',
+          child: Text(counter,
               style: TextStyle(color: AppTheme.muted, fontSize: 13)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: SegmentedButton<bool>(
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: const [
+              ButtonSegment(
+                  value: false,
+                  label: Text('1 at a time'),
+                  icon: Icon(Icons.looks_one_outlined)),
+              ButtonSegment(
+                  value: true,
+                  label: Text('Batch of $_kBatchSize'),
+                  icon: Icon(Icons.grid_view_rounded)),
+            ],
+            selected: {_batchMode},
+            onSelectionChanged: (s) => setState(() {
+              _batchMode = s.first;
+              _pending = null;
+              _error = null;
+              _resetSlots();
+            }),
+          ),
         ),
         Expanded(
           child: Align(
@@ -261,37 +412,9 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
                 // word into Google Images.
                 child: SelectionArea(
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _cardInfo(c),
-                    const SizedBox(height: 10),
-                    _quickActions(),
-                    const SizedBox(height: 14),
-                    _promptBox(c),
-                    const SizedBox(height: 14),
-                    _pasteArea(c),
-                    if (_error != null) ...[
-                      const SizedBox(height: 10),
-                      Text(_error!,
-                          style: const TextStyle(color: Color(0xFFB3261E))),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: _index == 0 ? null : _prev,
-                          icon: const Icon(Icons.chevron_left),
-                          label: const Text('Prev'),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: _skip,
-                          icon: const Icon(Icons.skip_next),
-                          label: const Text('Skip'),
-                        ),
-                      ],
-                    ),
-                  ],
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children:
+                        _batchMode ? _batchChildren() : _singleChildren(c),
                   ),
                 ),
               ),
@@ -299,6 +422,146 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  List<Widget> _singleChildren(Flashcard c) => [
+        _cardInfo(c),
+        const SizedBox(height: 10),
+        _quickActions(),
+        const SizedBox(height: 14),
+        _promptBox(c),
+        const SizedBox(height: 14),
+        _pasteArea(c),
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(_error!, style: const TextStyle(color: Color(0xFFB3261E))),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: _index == 0 ? null : _prev,
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Prev'),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _skip,
+              icon: const Icon(Icons.skip_next),
+              label: const Text('Skip'),
+            ),
+          ],
+        ),
+      ];
+
+  List<Widget> _batchChildren() {
+    final batch = _batchCards;
+    final filled = _slots.where((e) => e != null).length;
+    return [
+      FilledButton.icon(
+        onPressed: _copyBatchPrompt,
+        icon: const Icon(Icons.copy_rounded),
+        label: Text('Copy prompt for ${batch.length}  →  Gemini'),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Paste the returned images in order — Ctrl+V fills the next empty slot.',
+        style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
+      ),
+      const SizedBox(height: 14),
+      for (var i = 0; i < batch.length; i++) ...[
+        _slotCard(i, batch[i]),
+        const SizedBox(height: 12),
+      ],
+      if (_error != null) ...[
+        Text(_error!, style: const TextStyle(color: Color(0xFFB3261E))),
+        const SizedBox(height: 10),
+      ],
+      Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: (_busy || filled == 0) ? null : _saveBatch,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded),
+              label: Text('Save $filled & next  (Enter)'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: _busy ? null : _skipBatch,
+            icon: const Icon(Icons.skip_next),
+            label: const Text('Skip'),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// One numbered slot: the term, and either the pasted image (with a clear
+  /// button) or a compact paste/file target that drops into this exact slot.
+  Widget _slotCard(int i, Flashcard c) {
+    final img = _slots[i];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('${i + 1}.  ${c.english}  ·  ${c.polish}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          if (img != null)
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(img,
+                      width: 90, height: 90, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Ready',
+                      style: TextStyle(
+                          color: AppTheme.coralDark,
+                          fontWeight: FontWeight.w600)),
+                ),
+                OutlinedButton(
+                  onPressed: () => setState(() => _slots[i] = null),
+                  child: const Text('Clear'),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _pasteIntoSlot(i),
+                    icon: const Icon(Icons.content_paste_rounded, size: 18),
+                    label: const Text('Paste'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _pickFileIntoSlot(i),
+                  icon: const Icon(Icons.folder_open_outlined, size: 18),
+                  label: const Text('File'),
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 
