@@ -8,6 +8,7 @@ import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../services/ai/prompt_builder.dart';
 import '../../services/media/image_import_service.dart';
+import '../../services/util/open_url.dart';
 import '../../theme.dart';
 
 /// "Assembly line" for adding images fast: for each entry that has no image it
@@ -87,6 +88,21 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
     final prompt = PromptBuilder.image(c.english, _scene(c));
     await Clipboard.setData(ClipboardData(text: prompt));
     if (mounted) _toast('Prompt copied — paste it into Gemini');
+  }
+
+  Future<void> _copyWord() async {
+    final c = _current;
+    if (c == null) return;
+    await Clipboard.setData(ClipboardData(text: c.english));
+    if (mounted) _toast('“${c.english}” copied');
+  }
+
+  /// Open Google Images for the current term (faster than AI for some words).
+  void _googleImages() {
+    final c = _current;
+    if (c == null) return;
+    openUrl('https://www.google.com/search?tbm=isch&q='
+        '${Uri.encodeComponent(c.english)}');
   }
 
   Future<void> _paste() async {
@@ -241,10 +257,16 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
               constraints: BoxConstraints(maxWidth: maxW),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                // SelectionArea makes the term, example and prompt drag-
+                // selectable and copyable (Ctrl/Cmd+C) — handy for pasting a
+                // word into Google Images.
+                child: SelectionArea(
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _cardInfo(c),
+                    const SizedBox(height: 10),
+                    _quickActions(),
                     const SizedBox(height: 14),
                     _promptBox(c),
                     const SizedBox(height: 14),
@@ -271,6 +293,7 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
                       ],
                     ),
                   ],
+                  ),
                 ),
               ),
             ),
@@ -303,6 +326,28 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _quickActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _copyWord,
+            icon: const Icon(Icons.content_copy_rounded, size: 18),
+            label: const Text('Copy word'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _googleImages,
+            icon: const Icon(Icons.image_search_rounded, size: 18),
+            label: const Text('Google Images'),
+          ),
+        ),
+      ],
     );
   }
 
