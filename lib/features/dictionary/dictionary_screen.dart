@@ -36,6 +36,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   bool _selectMode = false;
   bool _alphabetical = false;
   bool _groupByCategory = false;
+  bool _compact = false;
   int? _filterCatId;
   final Set<int> _selected = {};
 
@@ -48,6 +49,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
       setState(() {
         _alphabetical = p.getBool('pref_alpha') ?? false;
         _groupByCategory = p.getBool('pref_group') ?? false;
+        _compact = p.getBool('pref_compact') ?? false;
       });
     });
   }
@@ -56,6 +58,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     final p = await SharedPreferences.getInstance();
     await p.setBool('pref_alpha', _alphabetical);
     await p.setBool('pref_group', _groupByCategory);
+    await p.setBool('pref_compact', _compact);
   }
 
   void _enterSelect([int? first]) {
@@ -203,6 +206,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             _selected.length == filtered.length,
                         alphabetical: _alphabetical,
                         groupByCategory: _groupByCategory,
+                        compact: _compact,
                         onToggleSort: () {
                           setState(() => _alphabetical = !_alphabetical);
                           _savePrefs();
@@ -210,6 +214,10 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         onToggleGroup: () {
                           setState(
                               () => _groupByCategory = !_groupByCategory);
+                          _savePrefs();
+                        },
+                        onToggleCompact: () {
+                          setState(() => _compact = !_compact);
                           _savePrefs();
                         },
                         onEnterSelect: () => _enterSelect(),
@@ -274,6 +282,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                                   card: card,
                                   services: services,
                                   db: db,
+                                  compact: _compact,
                                   selectMode: _selectMode,
                                   selected: _selected.contains(card.id),
                                   onTap: () {
@@ -317,8 +326,10 @@ class _ActionBar extends StatelessWidget {
   final bool allSelected;
   final bool alphabetical;
   final bool groupByCategory;
+  final bool compact;
   final VoidCallback onToggleSort;
   final VoidCallback onToggleGroup;
+  final VoidCallback onToggleCompact;
   final VoidCallback onEnterSelect;
   final VoidCallback onCancel;
   final VoidCallback onToggleAll;
@@ -330,8 +341,10 @@ class _ActionBar extends StatelessWidget {
     required this.allSelected,
     required this.alphabetical,
     required this.groupByCategory,
+    required this.compact,
     required this.onToggleSort,
     required this.onToggleGroup,
+    required this.onToggleCompact,
     required this.onEnterSelect,
     required this.onCancel,
     required this.onToggleAll,
@@ -369,6 +382,9 @@ class _ActionBar extends StatelessWidget {
             const SizedBox(width: 8),
             _chip('Group', Icons.folder_outlined, groupByCategory,
                 onToggleGroup),
+            const SizedBox(width: 8),
+            _chip('Zwarty', Icons.density_small_rounded, compact,
+                onToggleCompact),
             const Spacer(),
             IconButton(
               onPressed: onEnterSelect,
@@ -502,6 +518,7 @@ class _EntryRow extends StatelessWidget {
   final Flashcard card;
   final AppServices services;
   final AppDatabase db;
+  final bool compact;
   final bool selectMode;
   final bool selected;
   final VoidCallback onTap;
@@ -510,6 +527,7 @@ class _EntryRow extends StatelessWidget {
     required this.card,
     required this.services,
     required this.db,
+    required this.compact,
     required this.selectMode,
     required this.selected,
     required this.onTap,
@@ -518,6 +536,7 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (compact) return _buildCompact(context);
     final allTags = card.tags
         .split(';')
         .map((t) => t.trim())
@@ -579,6 +598,123 @@ class _EntryRow extends StatelessWidget {
                 if (!selectMode) _addButton(context),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Dense one-line row: English · Polish with a small add/check control.
+  /// Drops the example sentence, tags and image so far more fit on screen.
+  Widget _buildCompact(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: selected ? const Color(0xFFFBEEE8) : AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: selected ? AppTheme.coral : AppTheme.border,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 9, 8, 9),
+            child: Row(
+              children: [
+                if (selectMode) ...[
+                  Icon(
+                    selected
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded,
+                    color: selected ? AppTheme.coral : AppTheme.muted,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: RichText(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: card.english,
+                          style: GoogleFonts.sourceSerif4(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black),
+                        ),
+                        TextSpan(
+                            text: '  ·  ',
+                            style: TextStyle(
+                                fontSize: 15, color: AppTheme.muted)),
+                        TextSpan(
+                          text: card.polish,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF55524B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: () => services.tts.speak(card.english, 'en-US'),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.volume_up_rounded,
+                        size: 18, color: AppTheme.muted),
+                  ),
+                ),
+                if (!selectMode) _addButtonCompact(context),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _addButtonCompact(BuildContext context) {
+    if (card.isCard) {
+      return Container(
+        width: 34,
+        height: 34,
+        decoration: const BoxDecoration(
+            color: AppTheme.coral, shape: BoxShape.circle),
+        child: const Tooltip(
+          message: 'In study deck',
+          child: Icon(Icons.check_rounded, color: Colors.white, size: 20),
+        ),
+      );
+    }
+    return Material(
+      color: AppTheme.coral,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () async {
+          await db.promoteToCard(card.id);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Added to study deck')),
+            );
+          }
+        },
+        child: const SizedBox(
+          width: 34,
+          height: 34,
+          child: Tooltip(
+            message: 'Add to study deck',
+            child: Icon(Icons.add_rounded, color: Colors.white, size: 22),
           ),
         ),
       ),
