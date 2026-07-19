@@ -448,6 +448,11 @@ class AppDatabase extends _$AppDatabase {
   Future<Flashcard?> getCard(int id) =>
       (select(cards)..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  /// Every entry in the deck (used by the CSV export and the duplicate finder).
+  Future<List<Flashcard>> allCards() =>
+      (select(cards)..orderBy([(t) => OrderingTerm(expression: t.english)]))
+          .get();
+
   /// Every distinct tag used across the deck, sorted A–Z. Powers the tag
   /// autocomplete in the card editor so tags stay consistent (e.g. "Academia").
   Future<List<String>> allTags() async {

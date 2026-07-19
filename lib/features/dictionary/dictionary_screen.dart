@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../data/seed.dart';
+import '../../services/import_export/csv_export.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
 import '../../services/import_export/list_image.dart';
@@ -17,6 +18,7 @@ import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
+import '../dedup/dedup_screen.dart';
 import '../editor/card_editor_screen.dart';
 import '../image_studio/image_studio_screen.dart';
 import '../stats/stats_screen.dart';
@@ -1066,6 +1068,11 @@ class _ManageMenu extends StatelessWidget {
         }
         if (v == 'new_limit') _setNewLimit(context);
         if (v == 'export_deck') _exportDeck(context);
+        if (v == 'export_csv') _exportCsv(context);
+        if (v == 'dedup') {
+          Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DedupScreen()));
+        }
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
         if (v == 'import_deck') _importDeck(context);
@@ -1136,6 +1143,24 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.cloud_download_outlined),
             title: Text('Back up / export deck'),
             subtitle: Text('Whole deck to a file (move to phone)'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'export_csv',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.table_view_outlined),
+            title: Text('Export all as CSV'),
+            subtitle: Text('Every entry to one spreadsheet file'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'dedup',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.content_copy_outlined),
+            title: Text('Find duplicates'),
+            subtitle: Text('Remove emptier copies of repeated terms'),
           ),
         ),
         PopupMenuItem(
@@ -1396,6 +1421,21 @@ class _ManageMenu extends StatelessWidget {
           SnackBar(content: Text('Export failed: $e')),
         );
       }
+    }
+  }
+
+  /// Export every entry to one CSV spreadsheet (one-click extraction).
+  Future<void> _exportCsv(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final cards = await db.allCards();
+      final stamp = DateTime.now().toIso8601String().split('T').first;
+      downloadText('lexicon-all-$stamp.csv', cardsToCsv(cards));
+      messenger.showSnackBar(SnackBar(
+          content: Text('Exported ${cards.length} entries — check your '
+              'downloads.')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('CSV export failed: $e')));
     }
   }
 
