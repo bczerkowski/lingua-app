@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../services/tagging/auto_tagger.dart';
 import 'connection/connection.dart';
 import 'tables.dart';
 
@@ -563,6 +564,34 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Flashcard>> allCards() =>
       (select(cards)..orderBy([(t) => OrderingTerm(expression: t.english)]))
           .get();
+
+  /// Compute rule-based tags for every entry and merge them into each card's
+  /// existing tags (never removing the user's manual tags). Only rows whose tag
+  /// string actually changes are written. Returns how many were updated.
+  ///
+  /// This touches only the `tags` column — images, SRS progress, folders and
+  /// favourites are left completely untouched.
+  Future<int> autoTagAll() async {
+    final all = await select(cards).get();
+    var changed = 0;
+    await batch((b) {
+      for (final c in all) {
+        final computed = computeTags(
+          english: c.english,
+          polish: c.polish,
+          definition: c.englishDefinition,
+          note: c.note,
+        );
+        final next = mergeTags(c.tags, computed);
+        if (next != c.tags) {
+          b.update(cards, CardsCompanion(tags: Value(next)),
+              where: (t) => t.id.equals(c.id));
+          changed++;
+        }
+      }
+    });
+    return changed;
+  }
 
   /// Every distinct tag used across the deck, sorted A–Z. Powers the tag
   /// autocomplete in the card editor so tags stay consistent (e.g. "Academia").

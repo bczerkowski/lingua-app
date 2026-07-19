@@ -1181,6 +1181,7 @@ class _ManageMenu extends StatelessWidget {
               builder: (_) => ImageStudioScreen(catalogueId: catalogueId)));
         }
         if (v == 'new_limit') _setNewLimit(context);
+        if (v == 'auto_tag') _autoTag(context);
         if (v == 'export_deck') _exportDeck(context);
         if (v == 'export_csv') _exportCsv(context);
         if (v == 'dedup') {
@@ -1247,6 +1248,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.speed_outlined),
             title: Text('New cards per day'),
             subtitle: Text('Cap how many new cards enter study daily'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'auto_tag',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.sell_outlined),
+            title: Text('Auto-tag all cards'),
+            subtitle: Text('Add register / type / topic tags in place'),
           ),
         ),
         PopupMenuDivider(),
@@ -1512,6 +1522,34 @@ class _ManageMenu extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Download is only available on the web app')),
       );
+    }
+  }
+
+  /// Auto-tag every entry in place: adds register / type / variant / topic tags,
+  /// keeping any tags the user added manually. Touches only the tags column, so
+  /// images, study progress, folders and favourites are never affected.
+  Future<void> _autoTag(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await _confirm(
+      context,
+      'Auto-tag all cards?',
+      'Every entry gets tags for its register (everyday/formal/informal…), '
+          'type (idiom, phrasal-verb, abbreviation…) and, where clear, a topic '
+          '(law, medicine, business…).\n\n'
+          'Your existing tags are kept. Nothing else changes — images, study '
+          'progress, folders and favourites are untouched.',
+    );
+    if (ok != true) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Tagging… this can take a moment.')),
+    );
+    try {
+      final n = await db.autoTagAll();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Done — tagged $n entries.')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Auto-tag failed: $e')));
     }
   }
 
