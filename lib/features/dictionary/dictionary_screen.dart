@@ -38,6 +38,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   bool _alphabetical = false;
   bool _groupByCategory = false;
   bool _compact = false;
+  bool _favoritesOnly = false;
   int? _filterCatId;
   final Set<int> _selected = {};
 
@@ -191,7 +192,9 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
               child: StreamBuilder<List<Flashcard>>(
                 // Search + category filter are applied in the query so the
                 // result is always correct, even for large decks.
-                stream: db.searchEntries(_query, catalogueId: _filterCatId),
+                stream: db.searchEntries(_query,
+                    catalogueId: _favoritesOnly ? null : _filterCatId,
+                    favoritesOnly: _favoritesOnly),
                 builder: (context, snap) {
                   final loading =
                       snap.connectionState == ConnectionState.waiting &&
@@ -241,9 +244,20 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                         _CategoryFilterBar(
                           db: db,
                           selectedId: _filterCatId,
+                          favoritesSelected: _favoritesOnly,
                           onSelect: (id) {
-                            setState(() => _filterCatId = id);
+                            setState(() {
+                              _filterCatId = id;
+                              _favoritesOnly = false;
+                            });
                             widget.onFilterChanged(id);
+                          },
+                          onSelectFavorites: () {
+                            setState(() {
+                              _favoritesOnly = true;
+                              _filterCatId = null;
+                            });
+                            widget.onFilterChanged(null);
                           },
                         ),
                       Expanded(
@@ -262,9 +276,11 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             if (filtered.isEmpty) {
                               final msg = _query.trim().isNotEmpty
                                   ? 'No matching entries.'
-                                  : _filterCatId != null
-                                      ? 'No entries in this category.'
-                                      : 'No entries yet — tap “New entry”.';
+                                  : _favoritesOnly
+                                      ? 'No favourites yet — tap the ♥ on an entry.'
+                                      : _filterCatId != null
+                                          ? 'No entries in this category.'
+                                          : 'No entries yet — tap “New entry”.';
                               return Center(
                                 child: Text(msg,
                                     style: TextStyle(
@@ -447,9 +463,15 @@ class _ActionBar extends StatelessWidget {
 class _CategoryFilterBar extends StatefulWidget {
   final AppDatabase db;
   final int? selectedId;
+  final bool favoritesSelected;
   final ValueChanged<int?> onSelect;
+  final VoidCallback onSelectFavorites;
   const _CategoryFilterBar(
-      {required this.db, required this.selectedId, required this.onSelect});
+      {required this.db,
+      required this.selectedId,
+      required this.favoritesSelected,
+      required this.onSelect,
+      required this.onSelectFavorites});
 
   @override
   State<_CategoryFilterBar> createState() => _CategoryFilterBarState();
@@ -466,9 +488,21 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
         final cats = snap.data ?? const <Catalogue>[];
         if (cats.isEmpty) return const SizedBox.shrink();
 
+        // Keep the folder chips in stable A–Z (natural) order, so a category
+        // created later (e.g. B5) never ends up out of sequence.
+        final sorted = [...cats]
+          ..sort((a, b) => _naturalCompare(a.name, b.name));
+        final noneSelected =
+            widget.selectedId == null && !widget.favoritesSelected;
+
         final pills = <Widget>[
-          _pill('All', widget.selectedId == null, () => widget.onSelect(null)),
-          for (final c in cats)
+          _pill('All', noneSelected, () => widget.onSelect(null)),
+          _pill('Favourites', widget.favoritesSelected,
+              widget.onSelectFavorites,
+              icon: widget.favoritesSelected
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded),
+          for (final c in sorted)
             _pill(c.name, widget.selectedId == c.id,
                 () => widget.onSelect(c.id)),
         ];
@@ -523,9 +557,14 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
     );
   }
 
-  Widget _pill(String label, bool selected, VoidCallback onTap) {
+  Widget _pill(String label, bool selected, VoidCallback onTap,
+      {IconData? icon}) {
     return ChoiceChip(
       label: Text(label),
+      avatar: icon == null
+          ? null
+          : Icon(icon,
+              size: 16, color: selected ? Colors.white : AppTheme.coral),
       selected: selected,
       onSelected: (_) => onTap(),
       showCheckmark: false,
@@ -538,6 +577,26 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
       side: BorderSide(color: selected ? AppTheme.coral : AppTheme.border),
     );
   }
+}
+
+/// Case-insensitive natural-order comparison so "B2" sorts before "B10" and
+/// folders stay in a predictable A–Z sequence regardless of creation order.
+int _naturalCompare(String a, String b) {
+  final ra = RegExp(r'\d+|\D+');
+  final pa = ra.allMatches(a.toLowerCase()).map((m) => m[0]!).toList();
+  final pb = ra.allMatches(b.toLowerCase()).map((m) => m[0]!).toList();
+  for (var i = 0; i < pa.length && i < pb.length; i++) {
+    final sa = pa[i], sb = pb[i];
+    final na = int.tryParse(sa), nb = int.tryParse(sb);
+    final int c;
+    if (na != null && nb != null) {
+      c = na.compareTo(nb);
+    } else {
+      c = sa.compareTo(sb);
+    }
+    if (c != 0) return c;
+  }
+  return pa.length.compareTo(pb.length);
 }
 
 /// A category section header shown when grouping is enabled.
@@ -647,7 +706,8 @@ class _EntryRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 4),
+                if (!selectMode) _heartButton(context, 24),
                 if (!selectMode) _addButton(context),
               ],
             ),
@@ -727,6 +787,7 @@ class _EntryRow extends StatelessWidget {
                         size: 18, color: AppTheme.muted),
                   ),
                 ),
+                if (!selectMode) _heartButton(context, 20),
                 if (!selectMode) _addButtonCompact(context),
               ],
             ),
@@ -771,6 +832,24 @@ class _EntryRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Star / unstar this entry. Toggling writes to the DB; the stream re-emits
+  /// and the row rebuilds with the new heart state.
+  Widget _heartButton(BuildContext context, double size) {
+    return IconButton(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      visualDensity: VisualDensity.compact,
+      iconSize: size,
+      icon: Icon(card.isFavorite
+          ? Icons.favorite_rounded
+          : Icons.favorite_border_rounded),
+      color: card.isFavorite ? AppTheme.coral : AppTheme.muted,
+      tooltip:
+          card.isFavorite ? 'Remove from favourites' : 'Add to favourites',
+      onPressed: () => db.setFavorite(card.id, !card.isFavorite),
     );
   }
 

@@ -45,6 +45,10 @@ class Cards extends Table {
   TextColumn get imageUrl => text().nullable()();
   TextColumn get imageSource => text().nullable()(); // 'ai' | 'manual' | null
 
+  // Whether the user has starred this entry as a favourite (shown in the
+  // "Favourites" filter). Independent of isCard / SRS state.
+  BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
+
   // --- Lifecycle ---
   BoolColumn get isCard => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

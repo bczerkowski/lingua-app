@@ -11,6 +11,22 @@ import 'study_controller.dart';
 
 String _plural(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
 
+/// Case-insensitive natural-order comparison so folder chips stay in a
+/// predictable A–Z sequence (e.g. B2 before B10) regardless of creation order.
+int _naturalCompare(String a, String b) {
+  final re = RegExp(r'\d+|\D+');
+  final pa = re.allMatches(a.toLowerCase()).map((m) => m[0]!).toList();
+  final pb = re.allMatches(b.toLowerCase()).map((m) => m[0]!).toList();
+  for (var i = 0; i < pa.length && i < pb.length; i++) {
+    final na = int.tryParse(pa[i]), nb = int.tryParse(pb[i]);
+    final c = (na != null && nb != null)
+        ? na.compareTo(nb)
+        : pa[i].compareTo(pb[i]);
+    if (c != 0) return c;
+  }
+  return pa.length.compareTo(pb.length);
+}
+
 class StudyScreen extends StatefulWidget {
   /// True when the Study tab is the visible tab.
   final bool active;
@@ -275,9 +291,11 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
         final cats = snap.data ?? const <Catalogue>[];
         if (cats.isEmpty) return const SizedBox.shrink();
 
+        final sorted = [...cats]
+          ..sort((a, b) => _naturalCompare(a.name, b.name));
         final pills = <Widget>[
           _pill('All', widget.selectedId == null, () => widget.onSelect(null)),
-          for (final c in cats)
+          for (final c in sorted)
             _pill(c.name, widget.selectedId == c.id,
                 () => widget.onSelect(c.id)),
         ];

@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,6 +47,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.addColumn(cards, cards.imageUrl);
           }
+          if (from < 6) {
+            await m.addColumn(cards, cards.isFavorite);
+          }
         },
         beforeOpen: (details) async {
           // Defensive: guarantee newer columns / tables exist even if a prior
@@ -61,6 +64,11 @@ class AppDatabase extends _$AppDatabase {
           }
           if (!names.contains('image_url')) {
             await customStatement('ALTER TABLE cards ADD COLUMN image_url TEXT');
+          }
+          if (!names.contains('is_favorite')) {
+            await customStatement('ALTER TABLE cards ADD COLUMN '
+                'is_favorite INTEGER NOT NULL DEFAULT 0 '
+                'CHECK (is_favorite IN (0, 1))');
           }
           // Ensure the meanings table exists AND has the expected columns;
           // recreate it if missing or malformed (e.g. a half-applied migration).
@@ -133,7 +141,8 @@ class AppDatabase extends _$AppDatabase {
   /// correct regardless of how the deck is sorted. The limit is a high safety
   /// ceiling — small enough to stay snappy, large enough that a personal deck
   /// is never silently truncated (the old limit of 80 hid newer entries).
-  Stream<List<Flashcard>> searchEntries(String query, {int? catalogueId}) {
+  Stream<List<Flashcard>> searchEntries(String query,
+      {int? catalogueId, bool favoritesOnly = false}) {
     final q = query.trim();
     final sel = select(cards)
       ..orderBy([(t) => OrderingTerm(expression: t.english)])
@@ -145,7 +154,24 @@ class AppDatabase extends _$AppDatabase {
     if (catalogueId != null) {
       sel.where((t) => t.catalogueId.equals(catalogueId));
     }
+    if (favoritesOnly) {
+      sel.where((t) => t.isFavorite.equals(true));
+    }
     return sel.watch();
+  }
+
+  /// Star or unstar a dictionary entry as a favourite.
+  Future<void> setFavorite(int id, bool value) =>
+      (update(cards)..where((t) => t.id.equals(id)))
+          .write(CardsCompanion(isFavorite: Value(value)));
+
+  /// Live count of favourited entries (for the "Favourites" chip).
+  Stream<int> watchFavoriteCount() {
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(cards.isFavorite.equals(true));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
 
   // ---------------------------------------------------------------------------
@@ -435,6 +461,7 @@ class AppDatabase extends _$AppDatabase {
                 : base64Encode(c.imageBytes!),
             'imageUrl': c.imageUrl,
             'imageSource': c.imageSource,
+            'isFavorite': c.isFavorite,
             'isCard': c.isCard,
             'createdAt': c.createdAt.millisecondsSinceEpoch,
             'updatedAt': c.updatedAt.millisecondsSinceEpoch,
@@ -513,6 +540,7 @@ class AppDatabase extends _$AppDatabase {
                 imageBytes: Value(img == null ? null : base64Decode(img)),
                 imageUrl: Value(c['imageUrl'] as String?),
                 imageSource: Value(c['imageSource'] as String?),
+                isFavorite: Value(c['isFavorite'] as bool? ?? false),
                 isCard: Value(c['isCard'] as bool? ?? false),
                 createdAt: Value(ms(c['createdAt'])),
                 updatedAt: Value(ms(c['updatedAt'])),
