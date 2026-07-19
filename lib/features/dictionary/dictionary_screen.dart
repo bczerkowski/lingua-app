@@ -542,7 +542,88 @@ class _CategoryFilterBar extends StatefulWidget {
 }
 
 class _CategoryFilterBarState extends State<_CategoryFilterBar> {
-  bool _expanded = false;
+  /// Builds the chip widgets. [afterTap] runs after a chip is picked (used by
+  /// the bottom sheet to close itself once a folder is chosen).
+  List<Widget> _pills(List<Catalogue> sorted, bool noneSelected,
+      {VoidCallback? afterTap}) {
+    void wrap(VoidCallback a) {
+      a();
+      afterTap?.call();
+    }
+
+    return <Widget>[
+      _pill('All', noneSelected, () => wrap(() => widget.onSelect(null))),
+      _pill('Favourites', widget.favoritesSelected,
+          () => wrap(widget.onSelectFavorites),
+          icon: widget.favoritesSelected
+              ? Icons.favorite_rounded
+              : Icons.favorite_border_rounded),
+      _pill('Learned', widget.learnedSelected,
+          () => wrap(widget.onSelectLearned),
+          icon: Icons.school_rounded),
+      for (final c in sorted)
+        _pill(
+            c.icon != null && c.icon!.isNotEmpty
+                ? '${c.icon}  ${c.name}'
+                : c.name,
+            widget.selectedId == c.id,
+            () => wrap(() => widget.onSelect(c.id)),
+            avatarBytes: c.iconBytes),
+    ];
+  }
+
+  /// Opens a bottom sheet listing EVERY folder in a normally-scrollable area
+  /// (up to 80% of the screen). This replaces the old inline expansion, which
+  /// competed for space with the list and left the bottom folders unreachable
+  /// on small screens.
+  void _showAllFolders(List<Catalogue> sorted, bool noneSelected) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        final pills = _pills(sorted, noneSelected,
+            afterTap: () => Navigator.of(sheetCtx).pop());
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetCtx).size.height * 0.8,
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Text('Foldery',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -560,60 +641,19 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
             !widget.favoritesSelected &&
             !widget.learnedSelected;
 
-        final pills = <Widget>[
-          _pill('All', noneSelected, () => widget.onSelect(null)),
-          _pill('Favourites', widget.favoritesSelected,
-              widget.onSelectFavorites,
-              icon: widget.favoritesSelected
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded),
-          _pill('Learned', widget.learnedSelected, widget.onSelectLearned,
-              icon: Icons.school_rounded),
-          for (final c in sorted)
-            _pill(
-                c.icon != null && c.icon!.isNotEmpty
-                    ? '${c.icon}  ${c.name}'
-                    : c.name,
-                widget.selectedId == c.id,
-                () => widget.onSelect(c.id),
-                avatarBytes: c.iconBytes),
-        ];
+        final pills = _pills(sorted, noneSelected);
 
         final toggle = IconButton(
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           visualDensity: VisualDensity.compact,
           iconSize: 24,
-          icon: Icon(_expanded
-              ? Icons.expand_less_rounded
-              : Icons.expand_more_rounded),
+          icon: const Icon(Icons.grid_view_rounded),
           color: AppTheme.coralDark,
-          tooltip: _expanded ? 'Collapse folders' : 'Show all folders',
-          onPressed: () => setState(() => _expanded = !_expanded),
+          tooltip: 'Show all folders',
+          onPressed: () => _showAllFolders(sorted, noneSelected),
         );
 
-        if (_expanded) {
-          // Cap the height and make the wrapped folders scroll vertically, so a
-          // long list never overflows the screen with no way to reach the rest.
-          final maxH = MediaQuery.of(context).size.height * 0.4;
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(18, 2, 6, 2),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxH),
-                    child: SingleChildScrollView(
-                      child: Wrap(spacing: 8, runSpacing: 8, children: pills),
-                    ),
-                  ),
-                ),
-                toggle,
-              ],
-            ),
-          );
-        }
         return SizedBox(
           height: 46,
           child: Row(

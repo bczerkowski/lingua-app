@@ -291,7 +291,76 @@ class _StudyCategoryBar extends StatefulWidget {
 }
 
 class _StudyCategoryBarState extends State<_StudyCategoryBar> {
-  bool _expanded = false;
+  List<Widget> _pills(List<Catalogue> sorted, {VoidCallback? afterTap}) {
+    void wrap(VoidCallback a) {
+      a();
+      afterTap?.call();
+    }
+
+    return <Widget>[
+      _pill('All', widget.selectedId == null,
+          () => wrap(() => widget.onSelect(null))),
+      for (final c in sorted)
+        _pill(
+            c.icon != null && c.icon!.isNotEmpty
+                ? '${c.icon}  ${c.name}'
+                : c.name,
+            widget.selectedId == c.id,
+            () => wrap(() => widget.onSelect(c.id)),
+            avatarBytes: c.iconBytes),
+    ];
+  }
+
+  /// Opens a bottom sheet with EVERY folder in a normally-scrollable area (up
+  /// to 80% of the screen), so the bottom folders are always reachable.
+  void _showAllFolders(List<Catalogue> sorted) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        final pills =
+            _pills(sorted, afterTap: () => Navigator.of(sheetCtx).pop());
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetCtx).size.height * 0.8,
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Text('Foldery',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -303,51 +372,19 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
 
         final sorted = [...cats]
           ..sort((a, b) => _naturalCompare(a.name, b.name));
-        final pills = <Widget>[
-          _pill('All', widget.selectedId == null, () => widget.onSelect(null)),
-          for (final c in sorted)
-            _pill(
-                c.icon != null && c.icon!.isNotEmpty
-                    ? '${c.icon}  ${c.name}'
-                    : c.name,
-                widget.selectedId == c.id,
-                () => widget.onSelect(c.id),
-                avatarBytes: c.iconBytes),
-        ];
+        final pills = _pills(sorted);
 
         final toggle = IconButton(
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           visualDensity: VisualDensity.compact,
           iconSize: 24,
-          icon: Icon(_expanded
-              ? Icons.expand_less_rounded
-              : Icons.expand_more_rounded),
+          icon: const Icon(Icons.grid_view_rounded),
           color: AppTheme.coralDark,
-          tooltip: _expanded ? 'Collapse folders' : 'Show all folders',
-          onPressed: () => setState(() => _expanded = !_expanded),
+          tooltip: 'Show all folders',
+          onPressed: () => _showAllFolders(sorted),
         );
 
-        if (_expanded) {
-          final maxH = MediaQuery.of(context).size.height * 0.4;
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 6, 2),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxH),
-                    child: SingleChildScrollView(
-                      child: Wrap(spacing: 8, runSpacing: 8, children: pills),
-                    ),
-                  ),
-                ),
-                toggle,
-              ],
-            ),
-          );
-        }
         return SizedBox(
           height: 46,
           child: Row(
