@@ -88,29 +88,37 @@ const _domainMap = {
 };
 
 const _topicKw = <String, List<String>>{
-  'law': ['court', 'judge', 'lawsuit', 'plaintiff', 'defendant', 'verdict', 'statute', 'attorney', 'litigation', 'prosecut', 'jury', 'plead', 'liable', 'warrant', 'tribunal', 'bail'],
-  'medicine': ['disease', 'illness', 'patient', 'symptom', 'diagnos', 'surgery', 'hospital', 'therapy', 'infection', 'tumour', 'tumor', 'vaccine', 'chronic', 'clinic'],
-  'technology': ['computer', 'software', 'hardware', 'internet', 'digital', 'network', 'algorithm', 'server', 'circuit', 'electron'],
-  'business': ['company', 'market', 'profit', 'invest', 'economy', 'economic', 'revenue', 'budget', 'shares', 'corporate'],
-  'military': ['soldier', 'weapon', 'troop', 'combat', 'battle', 'artillery', 'warfare', 'ammunition', 'siege'],
-  'aviation': ['aircraft', 'flight', 'pilot', 'airline', 'cockpit', 'fuselage', 'runway'],
-  'nautical': ['sailing', 'nautical', 'harbour', 'harbor', 'vessel', 'naval', 'anchor'],
-  'religion': ['prayer', 'church', 'sacred', 'worship', 'biblical', 'spiritual', 'divine'],
-  'arts': ['music', 'painting', 'poetry', 'sculpture', 'melody', 'symphony', 'ballet'],
-  'politics': ['election', 'parliament', 'democracy', 'minister', 'senate', 'diplomat', 'referendum'],
-  'food': ['cooking', 'recipe', 'cuisine', 'flavour', 'flavor', 'seasoning'],
-  'nature': ['animal', 'plant', 'forest', 'wildlife', 'insect', 'mammal'],
-  'emotions': ['emotion', 'anxiety', 'grief', 'psycholog', 'depress', 'temperament'],
+  'law': ['court', 'judge', 'lawsuit', 'verdict', 'statute', 'attorney', 'litigat', 'prosecut', 'juror', 'jury', 'tribunal', 'criminal', 'crime', 'crimin', 'felony', 'offence', 'offense', 'plaintiff', 'defendant', 'testif', 'witness', 'convict', 'acquit', 'bail', 'warrant', 'custody', 'probation', 'illegal', 'lawyer', 'legal', 'fraud', 'theft', 'burglar', 'jurisdict'],
+  'medicine': ['disease', 'illness', 'patient', 'symptom', 'diagnos', 'surgery', 'surgeon', 'hospital', 'therapy', 'infection', 'tumour', 'tumor', 'vaccine', 'chronic', 'clinic', 'doctor', 'nurse', 'medicine', 'medical', 'injury', 'bruise', 'fever', 'nausea', 'swelling', 'cancer', 'ailment', 'remedy', 'bandage', 'inflamm', 'fracture'],
+  'technology': ['computer', 'software', 'hardware', 'internet', 'digital', 'network', 'algorithm', 'server', 'circuit', 'electron', 'device', 'machine', 'engine', 'battery', 'sensor', 'processor', 'database', 'website', 'download', 'gadget', 'wireless', 'technolog', 'robot', 'automat'],
+  'business': ['company', 'compan', 'market', 'profit', 'invest', 'economy', 'economic', 'revenue', 'budget', 'shares', 'corporat', 'finance', 'financ', 'commerce', 'commercial', 'wage', 'salary', 'wholesale', 'retail', 'merchant', 'entrepreneur', 'bankrupt', 'stakeholder', 'dividend', 'turnover', 'ledger', 'invoice', 'procure'],
+  'military': ['soldier', 'weapon', 'troop', 'combat', 'battle', 'artillery', 'warfare', 'ammunition', 'siege', 'army', 'navy', 'regiment', 'infantry', 'grenade', 'rifle', 'bayonet', 'garrison', 'militia', 'battalion', 'trench', 'sniper', 'commando'],
+  'aviation': ['aircraft', 'airplane', 'aeroplane', 'flight', 'pilot', 'airline', 'cockpit', 'fuselage', 'runway', 'aviation', 'airport', 'aerodrome', 'altitude', 'takeoff', 'jetliner'],
+  'nautical': ['sailing', 'nautical', 'harbour', 'harbor', 'vessel', 'naval', 'anchor', 'mariner', 'seafarer', 'schooner', 'starboard', 'rudder', 'wharf', 'buoy', 'galleon', 'frigate'],
+  'religion': ['prayer', 'church', 'sacred', 'worship', 'biblical', 'spiritual', 'divine', 'clergy', 'sermon', 'scripture', 'pilgrim', 'liturg', 'sacrament', 'parish', 'monaster', 'chapel', 'gospel', 'apostle', 'blasphem', 'heresy'],
+  'arts': ['painting', 'poetry', 'sculpture', 'melody', 'symphony', 'ballet', 'sonnet', 'orchestra', 'composer', 'novelist', 'playwright', 'watercolour', 'watercolor', 'fresco', 'operetta', 'choreograph'],
+  'politics': ['election', 'parliament', 'democracy', 'senate', 'diplomat', 'referendum', 'legislat', 'constituen', 'candidate', 'campaign', 'coalition', 'incumbent', 'suffrage', 'ballot', 'partisan', 'statesman'],
+  'food': ['cooking', 'recipe', 'cuisine', 'flavour', 'flavor', 'seasoning', 'culinary', 'gourmet', 'ingredient', 'roast', 'simmer', 'saute', 'marinade', 'dessert', 'appetiser', 'appetizer', 'condiment', 'delicacy', 'edible'],
+  'nature': ['wildlife', 'insect', 'mammal', 'reptile', 'meadow', 'forest', 'blossom', 'foliage', 'habitat', 'predator', 'burrow', 'plumage', 'herbivore', 'ecosystem', 'wilderness', 'shrub', 'thicket'],
+  'emotions': ['emotion', 'anxiety', 'grief', 'psycholog', 'depress', 'temperament', 'melanchol', 'euphoria', 'resentment', 'nostalg', 'dread', 'elation', 'apprehens', 'yearning', 'remorse', 'contempt', 'jealous'],
+};
+
+/// Keywords compiled to leading-word-boundary regexes so short, high-signal
+/// stems (law, war, food) match inflections without firing on substrings
+/// ("important" must not match "port").
+final _topicRe = {
+  for (final e in _topicKw.entries)
+    e.key: e.value.map((k) => RegExp('\\b${RegExp.escape(k)}')).toList()
 };
 
 String? _inferTopic(String english, String def, String pl) {
   final s = '$english $def $pl'.toLowerCase();
   String? best;
   int bestN = 0;
-  _topicKw.forEach((topic, kws) {
+  _topicRe.forEach((topic, res) {
     int n = 0;
-    for (final k in kws) {
-      if (s.contains(k)) n++;
+    for (final re in res) {
+      if (re.hasMatch(s)) n++;
     }
     if (n > bestN) {
       bestN = n;
