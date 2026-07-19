@@ -17,6 +17,7 @@ import '../../services/sync/sync_service.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
+import '../image_studio/image_studio_screen.dart';
 import '../stats/stats_screen.dart';
 import '../study/study_controller.dart';
 import '../sync/sync_screen.dart';
@@ -1047,6 +1048,10 @@ class _ManageMenu extends StatelessWidget {
           );
         }
         if (v == 'ai_settings') showAiImageSettings(context);
+        if (v == 'image_studio') {
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ImageStudioScreen(catalogueId: catalogueId)));
+        }
         if (v == 'new_limit') _setNewLimit(context);
         if (v == 'export_deck') _exportDeck(context);
         if (v == 'export_image') _exportImage(context);
@@ -1091,6 +1096,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.auto_awesome_outlined),
             title: Text('AI image settings'),
             subtitle: Text('Use Gemini (free key) or Pollinations'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'image_studio',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.burst_mode_outlined),
+            title: Text('Image Studio (bulk photos)'),
+            subtitle: Text('Copy prompt → Gemini → paste image → next'),
           ),
         ),
         PopupMenuItem(

@@ -350,6 +350,28 @@ class AppDatabase extends _$AppDatabase {
         ..where((t) => t.imageBytes.isNotNull() & t.imageUrl.isNull()))
       .get();
 
+  /// Entries that still have no image (neither local bytes nor a Storage URL),
+  /// oldest first — the work queue for the batch image studio.
+  Future<List<Flashcard>> cardsWithoutImage({int? catalogueId}) {
+    final q = select(cards)
+      ..where((t) =>
+          t.imageBytes.isNull() &
+          (t.imageUrl.isNull() | t.imageUrl.equals('')))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (catalogueId != null) q.where((t) => t.catalogueId.equals(catalogueId));
+    return q.get();
+  }
+
+  /// Live count of entries still missing an image (for a menu subtitle).
+  Stream<int> watchMissingImageCount() {
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(cards.imageBytes.isNull() &
+          (cards.imageUrl.isNull() | cards.imageUrl.equals('')));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
+  }
+
   /// Records the Storage URL for a card after its image is uploaded.
   Future<void> setImageUrl(int id, String url) =>
       (update(cards)..where((t) => t.id.equals(id)))
