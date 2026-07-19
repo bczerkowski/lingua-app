@@ -179,6 +179,85 @@ class AppDatabase extends _$AppDatabase {
     return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
 
+  /// Due *review* cards only — ones already learned at least once
+  /// (repetitions > 0). These always flow through, never rate-limited.
+  Future<List<Flashcard>> dueReviewCards(DateTime now,
+      {int? catalogueId, int limit = 500}) {
+    final q = select(cards)
+      ..where((t) =>
+          t.isCard.equals(true) &
+          t.suspended.equals(false) &
+          t.repetitions.isBiggerThanValue(0) &
+          (t.dueDate.isSmallerOrEqualValue(now) | t.dueDate.isNull()))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.dueDate, mode: OrderingMode.asc),
+      ])
+      ..limit(limit);
+    if (catalogueId != null) q.where((t) => t.catalogueId.equals(catalogueId));
+    return q.get();
+  }
+
+  /// Brand-new study cards (never reviewed), oldest first, capped by [limit].
+  /// Returns an empty list when [limit] <= 0 (daily new budget spent).
+  Future<List<Flashcard>> newStudyCards(DateTime now,
+      {int? catalogueId, int limit = 20}) {
+    if (limit <= 0) return Future.value(const <Flashcard>[]);
+    final q = select(cards)
+      ..where((t) =>
+          t.isCard.equals(true) &
+          t.suspended.equals(false) &
+          t.repetitions.equals(0) &
+          (t.dueDate.isSmallerOrEqualValue(now) | t.dueDate.isNull()))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.id, mode: OrderingMode.asc),
+      ])
+      ..limit(limit);
+    if (catalogueId != null) q.where((t) => t.catalogueId.equals(catalogueId));
+    return q.get();
+  }
+
+  Expression<bool> _reviewDueFilter(DateTime now) =>
+      cards.isCard.equals(true) &
+      cards.suspended.equals(false) &
+      cards.repetitions.isBiggerThanValue(0) &
+      (cards.dueDate.isSmallerOrEqualValue(now) | cards.dueDate.isNull());
+
+  Expression<bool> _newAvailableFilter(DateTime now) =>
+      cards.isCard.equals(true) &
+      cards.suspended.equals(false) &
+      cards.repetitions.equals(0) &
+      (cards.dueDate.isSmallerOrEqualValue(now) | cards.dueDate.isNull());
+
+  /// Live count of due *review* cards (excludes brand-new ones).
+  Stream<int> watchReviewDueCount() {
+    final now = DateTime.now();
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(_reviewDueFilter(now));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
+  }
+
+  /// Live count of brand-new study cards still available to learn.
+  Stream<int> watchNewAvailableCount() {
+    final now = DateTime.now();
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(_newAvailableFilter(now));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
+  }
+
+  /// One-shot count of brand-new study cards available (optionally per category).
+  Future<int> countNewAvailable(DateTime now, {int? catalogueId}) async {
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(_newAvailableFilter(now));
+    if (catalogueId != null) q.where(cards.catalogueId.equals(catalogueId));
+    return (await q.getSingle()).read(c) ?? 0;
+  }
+
   /// How many cards currently have an image (local bytes or a Storage URL).
   Future<int> countCardsWithImage() async {
     final c = countAll();

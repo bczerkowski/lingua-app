@@ -18,6 +18,7 @@ import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../editor/card_editor_screen.dart';
 import '../stats/stats_screen.dart';
+import '../study/study_controller.dart';
 import '../sync/sync_screen.dart';
 
 class DictionaryScreen extends StatefulWidget {
@@ -915,6 +916,7 @@ class _ManageMenu extends StatelessWidget {
           );
         }
         if (v == 'ai_settings') showAiImageSettings(context);
+        if (v == 'new_limit') _setNewLimit(context);
         if (v == 'export_deck') _exportDeck(context);
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
@@ -958,6 +960,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.auto_awesome_outlined),
             title: Text('AI image settings'),
             subtitle: Text('Use Gemini (free key) or Pollinations'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'new_limit',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.speed_outlined),
+            title: Text('New cards per day'),
+            subtitle: Text('Cap how many new cards enter study daily'),
           ),
         ),
         PopupMenuDivider(),
@@ -1032,6 +1043,83 @@ class _ManageMenu extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Lets the user cap how many brand-new cards enter study each day.
+  Future<void> _setNewLimit(BuildContext context) async {
+    final current = await readNewPerDay();
+    if (!context.mounted) return;
+    final ctrl = TextEditingController(text: current.toString());
+    const presets = [10, 20, 30, 50];
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          int? parsed() => int.tryParse(ctrl.text.trim());
+          return AlertDialog(
+            title: const Text('New cards per day'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'Reviews always come up. This only limits how many brand-'
+                    'new cards start each day, so a big import can\'t flood you.'),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final p in presets)
+                      ChoiceChip(
+                        label: Text('$p'),
+                        selected: parsed() == p,
+                        onSelected: (_) =>
+                            setLocal(() => ctrl.text = p.toString()),
+                      ),
+                    ChoiceChip(
+                      label: const Text('Off'),
+                      selected: parsed() == 0,
+                      onSelected: (_) => setLocal(() => ctrl.text = '0'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom number',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setLocal(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: parsed() == null || parsed()! < 0
+                    ? null
+                    : () => Navigator.pop(ctx, parsed()),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (chosen == null) return;
+    await writeNewPerDay(chosen);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(chosen == 0
+                ? 'New cards paused — reviews only'
+                : '$chosen new cards per day')),
+      );
+    }
   }
 
   Future<void> _confirmReset(BuildContext context) async {
@@ -1372,45 +1460,83 @@ class _Header extends StatelessWidget {
                   letterSpacing: -0.5,
                   color: AppTheme.ink)),
           const SizedBox(height: 6),
-          StreamBuilder<int>(
-            stream: db.watchDueCount(),
-            builder: (context, snap) {
-              final due = snap.data ?? 0;
-              if (due == 0) {
-                return Row(
-                  children: [
-                    const Icon(Icons.check_circle_outline,
-                        size: 19, color: AppTheme.muted),
-                    const SizedBox(width: 7),
-                    Text('No cards due right now',
-                        style: TextStyle(fontSize: 16, color: AppTheme.muted)),
-                  ],
-                );
-              }
-              return InkWell(
-                onTap: onStudyTap,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.school_outlined,
-                          size: 20, color: AppTheme.coralDark),
-                      const SizedBox(width: 7),
-                      Text(
-                          '$due ${due == 1 ? 'card' : 'cards'} due — study now →',
-                          style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.coralDark)),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+          _DueLine(db: db, onStudyTap: onStudyTap),
         ],
       ),
+    );
+  }
+}
+
+/// The "cards due — study now" link. The count is reviews-due plus only the
+/// new cards still allowed today (so a big import doesn't show thousands due).
+class _DueLine extends StatelessWidget {
+  final AppDatabase db;
+  final VoidCallback onStudyTap;
+  const _DueLine({required this.db, required this.onStudyTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: db.watchReviewDueCount(),
+      builder: (context, revSnap) {
+        final reviews = revSnap.data ?? 0;
+        return StreamBuilder<int>(
+          stream: db.watchNewAvailableCount(),
+          builder: (context, newSnap) {
+            final newAvail = newSnap.data ?? 0;
+            return FutureBuilder<int>(
+              future: remainingNewToday(),
+              builder: (context, allowSnap) {
+                final allowance = allowSnap.data ?? 0;
+                final newToday = newAvail < allowance ? newAvail : allowance;
+                final total = reviews + newToday;
+                if (total == 0) {
+                  return Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          size: 19, color: AppTheme.muted),
+                      const SizedBox(width: 7),
+                      Text(
+                          newAvail > 0
+                              ? 'Daily limit reached — nothing due'
+                              : 'No cards due right now',
+                          style:
+                              TextStyle(fontSize: 16, color: AppTheme.muted)),
+                    ],
+                  );
+                }
+                // Only spell out the split when it's actually a mix.
+                final breakdown = (reviews > 0 && newToday > 0)
+                    ? '  ·  $reviews review, $newToday new'
+                    : '';
+                return InkWell(
+                  onTap: onStudyTap,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.school_outlined,
+                            size: 20, color: AppTheme.coralDark),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            '$total ${total == 1 ? 'card' : 'cards'} due$breakdown — study now →',
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.coralDark),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

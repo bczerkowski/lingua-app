@@ -135,7 +135,13 @@ class _StudyScreenState extends State<StudyScreen> {
                 final card = ctrl.current;
                 if (card == null) {
                   return _DoneView(
-                      reviewed: ctrl.reviewed, onReload: _reload);
+                    reviewed: ctrl.reviewed,
+                    lockedNew: ctrl.lockedNew,
+                    onReload: _reload,
+                    onLearnMore: () async {
+                      await ctrl.learnMoreNew(10, catalogueId: _studyCatId);
+                    },
+                  );
                 }
                 return Column(
             children: [
@@ -397,29 +403,69 @@ class _GradeBar extends StatelessWidget {
 
 class _DoneView extends StatelessWidget {
   final int reviewed;
+  final int lockedNew;
   final VoidCallback onReload;
-  const _DoneView({required this.reviewed, required this.onReload});
+  final VoidCallback onLearnMore;
+  const _DoneView({
+    required this.reviewed,
+    required this.lockedNew,
+    required this.onReload,
+    required this.onLearnMore,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.check_circle_outline, size: 56, color: AppTheme.coral),
-          const SizedBox(height: 12),
-          Text(reviewed == 0 ? 'No cards due right now' : 'Session complete!',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Text('${_plural(reviewed, 'card')} reviewed',
-              style: TextStyle(color: Colors.grey.shade600)),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.refresh),
-            label: const Text('Check again'),
-            onPressed: onReload,
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline,
+                size: 56, color: AppTheme.coral),
+            const SizedBox(height: 12),
+            Text(reviewed == 0 ? 'No cards due right now' : 'Session complete!',
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('${_plural(reviewed, 'card')} reviewed',
+                style: TextStyle(color: Colors.grey.shade600)),
+            if (lockedNew > 0) ...[
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.sand,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Daily new-card limit reached.\n'
+                      '$lockedNew new ${lockedNew == 1 ? 'card is' : 'cards are'} '
+                      'waiting for the coming days.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, height: 1.35),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.add, size: 20),
+                      label: Text('Learn ${lockedNew < 10 ? lockedNew : 10} '
+                          'more now'),
+                      onPressed: onLearnMore,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Check again'),
+              onPressed: onReload,
+            ),
+          ],
+        ),
       ),
     );
   }

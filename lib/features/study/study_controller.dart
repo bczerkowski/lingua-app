@@ -8,6 +8,49 @@ import '../../services/srs/srs_scheduler.dart';
 String _ymd(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+// ---------------------------------------------------------------------------
+// Daily new-card budget
+//
+// A "new" card is one that has never been reviewed (repetitions == 0). Reviews
+// always flow through; new cards are rationed to [newPerDay] per calendar day
+// so a big import can't flood the queue with hundreds of "due" cards at once.
+// ---------------------------------------------------------------------------
+
+const int kDefaultNewPerDay = 20;
+const String _kNewPerDay = 'new_per_day';
+const String _kNewIntroPrefix = 'newintro_'; // + yyyy-mm-dd
+
+/// How many new cards the user allows per day (defaults to 20; 0 = none).
+Future<int> readNewPerDay() async {
+  final p = await SharedPreferences.getInstance();
+  return p.getInt(_kNewPerDay) ?? kDefaultNewPerDay;
+}
+
+Future<void> writeNewPerDay(int n) async {
+  final p = await SharedPreferences.getInstance();
+  await p.setInt(_kNewPerDay, n < 0 ? 0 : n);
+}
+
+Future<int> _introducedToday() async {
+  final p = await SharedPreferences.getInstance();
+  return p.getInt('$_kNewIntroPrefix${_ymd(DateTime.now())}') ?? 0;
+}
+
+Future<void> _addIntroducedToday(int delta) async {
+  final p = await SharedPreferences.getInstance();
+  final key = '$_kNewIntroPrefix${_ymd(DateTime.now())}';
+  final next = (p.getInt(key) ?? 0) + delta;
+  await p.setInt(key, next < 0 ? 0 : next);
+}
+
+/// New cards still allowed today (never negative).
+Future<int> remainingNewToday() async {
+  final per = await readNewPerDay();
+  if (per <= 0) return 0;
+  final left = per - await _introducedToday();
+  return left < 0 ? 0 : left;
+}
+
 /// Records a study day and returns the current streak. Increments when studying
 /// on a consecutive day, resets to 1 after a gap.
 Future<int> recordStudyStreak() async {
@@ -52,6 +95,12 @@ class StudyController extends ChangeNotifier {
   Map<int, List<Meaning>> _meanings = {};
   bool _loading = true;
   int _reviewed = 0;
+  // New cards available but held back today by the daily limit (for a hint on
+  // the "done" screen). Lets the user choose to learn a few more.
+  int _lockedNew = 0;
+  // New cards already counted against today's budget in this controller's life,
+  // so a re-queued (graded "Again") new card is never double-counted.
+  final Set<int> _introducedSession = {};
 
   // One level of undo for the last grade.
   Flashcard? _undoSnapshot; // card row before the last grade
@@ -60,6 +109,7 @@ class StudyController extends ChangeNotifier {
   bool get loading => _loading;
   int get remaining => _queue.length;
   int get reviewed => _reviewed;
+  int get lockedNew => _lockedNew;
   bool get canUndo => _undoSnapshot != null;
   Flashcard? get current => _queue.isEmpty ? null : _queue.first;
 
@@ -69,7 +119,17 @@ class StudyController extends ChangeNotifier {
   Future<void> load({int? catalogueId}) async {
     _loading = true;
     notifyListeners();
-    final due = await db.dueCards(DateTime.now(), catalogueId: catalogueId);
+    final now = DateTime.now();
+    // Reviews always flow through; new cards are capped by today's remaining
+    // budget so a large import can't dump hundreds of "due" cards at once.
+    final allowance = await remainingNewToday();
+    final reviews = await db.dueReviewCards(now, catalogueId: catalogueId);
+    final news = await db.newStudyCards(now,
+        catalogueId: catalogueId, limit: allowance);
+    final newAvail = await db.countNewAvailable(now, catalogueId: catalogueId);
+    _lockedNew = newAvail - news.length;
+    if (_lockedNew < 0) _lockedNew = 0;
+    final due = [...reviews, ...news];
     _queue
       ..clear()
       ..addAll(due);
@@ -78,6 +138,24 @@ class StudyController extends ChangeNotifier {
     _reviewed = 0;
     _undoSnapshot = null;
     _loading = false;
+    notifyListeners();
+  }
+
+  /// Pull [n] more brand-new cards into the queue, ignoring today's limit.
+  /// Used by the "learn more" action on the finished screen.
+  Future<void> learnMoreNew(int n, {int? catalogueId}) async {
+    if (n <= 0) return;
+    final now = DateTime.now();
+    final queued = _queue.map((c) => c.id).toSet()..addAll(_introducedSession);
+    final more = await db.newStudyCards(now,
+        catalogueId: catalogueId, limit: n + queued.length);
+    final add = more.where((c) => !queued.contains(c.id)).take(n).toList();
+    if (add.isEmpty) return;
+    final extra = await db.meaningsForCards([for (final c in add) c.id]);
+    _meanings.addAll(extra);
+    _queue.addAll(add);
+    _lockedNew -= add.length;
+    if (_lockedNew < 0) _lockedNew = 0;
     notifyListeners();
   }
 
@@ -100,6 +178,11 @@ class StudyController extends ChangeNotifier {
     final c = current;
     if (c == null) return;
     final now = DateTime.now();
+    // A brand-new card being seen for the first time spends one of today's
+    // new-card budget slots (counted once, even if it's re-queued as "Again").
+    if (c.repetitions == 0 && _introducedSession.add(c.id)) {
+      await _addIntroducedToday(1);
+    }
     final next = srs.review(_stateOf(c, now), grade, now);
 
     await (db.update(db.cards)..where((t) => t.id.equals(c.id))).write(
@@ -147,6 +230,10 @@ class StudyController extends ChangeNotifier {
     if (_undoRequeued) {
       final i = _queue.lastIndexWhere((e) => e.id == snap.id);
       if (i != -1) _queue.removeAt(i);
+    }
+    // Give back the new-card budget slot if this was a new card's first grade.
+    if (snap.repetitions == 0 && _introducedSession.remove(snap.id)) {
+      await _addIntroducedToday(-1);
     }
     _queue.insert(0, snap);
     if (_reviewed > 0) _reviewed--;
