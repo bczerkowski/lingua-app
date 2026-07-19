@@ -228,6 +228,14 @@ class _StudyScreenState extends State<StudyScreen> {
                   setState(() => _revealed = false);
                   ctrl.undo();
                 },
+                onLearned: () {
+                  setState(() => _revealed = false);
+                  ctrl.markLearned();
+                  ScaffoldMessenger.of(context)
+                    ..clearSnackBars()
+                    ..showSnackBar(const SnackBar(
+                        content: Text('Marked as learned — retired from study')));
+                },
                 onEdit: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -383,14 +391,18 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
 class _BottomLinks extends StatelessWidget {
   final bool canUndo;
   final VoidCallback onUndo;
+  final VoidCallback onLearned;
   final VoidCallback onEdit;
   const _BottomLinks(
-      {required this.canUndo, required this.onUndo, required this.onEdit});
+      {required this.canUndo,
+      required this.onUndo,
+      required this.onLearned,
+      required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
       children: [
         if (canUndo)
           TextButton.icon(
@@ -398,6 +410,11 @@ class _BottomLinks extends StatelessWidget {
             label: const Text('Undo'),
             onPressed: onUndo,
           ),
+        TextButton.icon(
+          icon: const Icon(Icons.school_outlined, size: 18),
+          label: const Text('Learned'),
+          onPressed: onLearned,
+        ),
         TextButton.icon(
           icon: const Icon(Icons.edit, size: 18),
           label: const Text('Edit this card'),

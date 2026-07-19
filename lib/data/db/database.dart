@@ -174,7 +174,9 @@ class AppDatabase extends _$AppDatabase {
   /// ceiling — small enough to stay snappy, large enough that a personal deck
   /// is never silently truncated (the old limit of 80 hid newer entries).
   Stream<List<Flashcard>> searchEntries(String query,
-      {int? catalogueId, bool favoritesOnly = false}) {
+      {int? catalogueId,
+      bool favoritesOnly = false,
+      bool learnedOnly = false}) {
     final q = query.trim();
     final sel = select(cards)
       ..orderBy([(t) => OrderingTerm(expression: t.english)])
@@ -189,7 +191,32 @@ class AppDatabase extends _$AppDatabase {
     if (favoritesOnly) {
       sel.where((t) => t.isFavorite.equals(true));
     }
+    // "Learned" entries (suspended) are hidden from the normal views and
+    // gathered under the Learned filter — and never come up in study.
+    sel.where((t) => t.suspended.equals(learnedOnly));
     return sel.watch();
+  }
+
+  /// Mark an entry as learned (suspended = retired from study & normal views)
+  /// or bring it back to active study.
+  Future<void> setLearned(int id, bool value) =>
+      (update(cards)..where((t) => t.id.equals(id))).write(CardsCompanion(
+          suspended: Value(value), updatedAt: Value(DateTime.now())));
+
+  /// Bulk version for the multi-select "Mark as learned" action.
+  Future<int> setLearnedForIds(List<int> ids, bool value) {
+    if (ids.isEmpty) return Future.value(0);
+    return (update(cards)..where((t) => t.id.isIn(ids))).write(CardsCompanion(
+        suspended: Value(value), updatedAt: Value(DateTime.now())));
+  }
+
+  /// Live count of learned (suspended) entries — for the Learned chip.
+  Stream<int> watchLearnedCount() {
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(cards.suspended.equals(true));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
 
   /// Star or unstar a dictionary entry as a favourite.

@@ -33,6 +33,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   int? _catalogueId;
   bool _isCard = true;
+  bool _learned = false;
   Uint8List? _imageBytes;
   String? _imageUrl; // Storage URL (present when synced from another device)
   String? _imageSource;
@@ -90,6 +91,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           .toList();
       _catalogueId = c.catalogueId;
       _isCard = c.isCard;
+      _learned = c.suspended;
       _imageBytes = c.imageBytes;
       _imageUrl = c.imageUrl;
       _imageSource = c.imageSource;
@@ -183,6 +185,13 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
               title: const Text('Study this card'),
               value: _isCard,
               onChanged: (v) => setState(() => _isCard = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Learned'),
+              subtitle: const Text('Retire from study; shows under “Learned”'),
+              value: _learned,
+              onChanged: (v) => setState(() => _learned = v),
             ),
             const SizedBox(height: 8),
             _imageSection(),
@@ -799,6 +808,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
               imageUrl: Value(_imageUrl),
               imageSource: Value(_imageSource),
               isCard: Value(_isCard),
+              suspended: Value(_learned),
               dueDate: Value(_isCard ? now : null),
             ));
       } else {
@@ -816,6 +826,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           imageUrl: Value(_imageUrl),
           imageSource: Value(_imageSource),
           isCard: Value(_isCard),
+          suspended: Value(_learned),
           updatedAt: Value(now),
         ));
       }

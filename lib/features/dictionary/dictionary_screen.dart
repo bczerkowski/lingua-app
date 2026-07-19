@@ -43,6 +43,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   bool _groupByCategory = false;
   bool _compact = false;
   bool _favoritesOnly = false;
+  bool _learnedOnly = false;
   int? _filterCatId;
   final Set<int> _selected = {};
 
@@ -129,6 +130,29 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     _exitSelect();
   }
 
+  /// Mark the selected entries as learned (retired from study & normal views)
+  /// or, when already viewing Learned, bring them back to active study.
+  Future<void> _markSelectedLearned(AppDatabase db, bool value) async {
+    final ids = _selected.toList();
+    final count = ids.length;
+    if (count == 0) return;
+    await db.setLearnedForIds(ids, value);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 6),
+      content: Text(value
+          ? 'Marked $count as learned'
+          : 'Moved $count back to active'),
+      action: SnackBarAction(
+        label: 'Undo',
+        textColor: Colors.white,
+        onPressed: () => db.setLearnedForIds(ids, !value),
+      ),
+    ));
+    _exitSelect();
+  }
+
   /// Produces a flat render list: section-header strings (when grouping) mixed
   /// with [Flashcard]s, applying alphabetical sort (by English) when enabled.
   List<Object> _buildRows(List<Flashcard> items, Map<int, String> names) {
@@ -197,8 +221,11 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                 // Search + category filter are applied in the query so the
                 // result is always correct, even for large decks.
                 stream: db.searchEntries(_query,
-                    catalogueId: _favoritesOnly ? null : _filterCatId,
-                    favoritesOnly: _favoritesOnly),
+                    catalogueId: (_favoritesOnly || _learnedOnly)
+                        ? null
+                        : _filterCatId,
+                    favoritesOnly: _favoritesOnly,
+                    learnedOnly: _learnedOnly),
                 builder: (context, snap) {
                   final loading =
                       snap.connectionState == ConnectionState.waiting &&
@@ -241,6 +268,9 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                           }
                         }),
                         onDelete: () => _deleteSelected(db),
+                        learnedView: _learnedOnly,
+                        onMarkLearned: () =>
+                            _markSelectedLearned(db, !_learnedOnly),
                       ),
                       // Keep the category bar visible at all times so an empty
                       // category never traps the user on a blank screen.
@@ -249,16 +279,27 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                           db: db,
                           selectedId: _filterCatId,
                           favoritesSelected: _favoritesOnly,
+                          learnedSelected: _learnedOnly,
                           onSelect: (id) {
                             setState(() {
                               _filterCatId = id;
                               _favoritesOnly = false;
+                              _learnedOnly = false;
                             });
                             widget.onFilterChanged(id);
                           },
                           onSelectFavorites: () {
                             setState(() {
                               _favoritesOnly = true;
+                              _learnedOnly = false;
+                              _filterCatId = null;
+                            });
+                            widget.onFilterChanged(null);
+                          },
+                          onSelectLearned: () {
+                            setState(() {
+                              _learnedOnly = true;
+                              _favoritesOnly = false;
                               _filterCatId = null;
                             });
                             widget.onFilterChanged(null);
@@ -280,11 +321,13 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             if (filtered.isEmpty) {
                               final msg = _query.trim().isNotEmpty
                                   ? 'No matching entries.'
-                                  : _favoritesOnly
-                                      ? 'No favourites yet — tap the ♥ on an entry.'
-                                      : _filterCatId != null
-                                          ? 'No entries in this category.'
-                                          : 'No entries yet — tap “New entry”.';
+                                  : _learnedOnly
+                                      ? 'Nothing marked as learned yet.'
+                                      : _favoritesOnly
+                                          ? 'No favourites yet — tap the ♥ on an entry.'
+                                          : _filterCatId != null
+                                              ? 'No entries in this category.'
+                                              : 'No entries yet — tap “New entry”.';
                               return Center(
                                 child: Text(msg,
                                     style: TextStyle(
@@ -355,6 +398,8 @@ class _ActionBar extends StatelessWidget {
   final VoidCallback onCancel;
   final VoidCallback onToggleAll;
   final VoidCallback onDelete;
+  final bool learnedView;
+  final VoidCallback onMarkLearned;
   const _ActionBar({
     required this.selectMode,
     required this.selectedCount,
@@ -370,6 +415,8 @@ class _ActionBar extends StatelessWidget {
     required this.onCancel,
     required this.onToggleAll,
     required this.onDelete,
+    required this.learnedView,
+    required this.onMarkLearned,
   });
 
   Widget _chip(String label, IconData icon, bool selected, VoidCallback onTap) {
@@ -441,6 +488,15 @@ class _ActionBar extends StatelessWidget {
                 style: const TextStyle(fontSize: 15)),
           ),
           const SizedBox(width: 4),
+          IconButton(
+            onPressed: selectedCount == 0 ? null : onMarkLearned,
+            icon: Icon(learnedView
+                ? Icons.school_outlined
+                : Icons.school_rounded),
+            color: AppTheme.coralDark,
+            tooltip: learnedView ? 'Move back to active' : 'Mark as learned',
+          ),
+          const SizedBox(width: 4),
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB3261E),
@@ -468,14 +524,18 @@ class _CategoryFilterBar extends StatefulWidget {
   final AppDatabase db;
   final int? selectedId;
   final bool favoritesSelected;
+  final bool learnedSelected;
   final ValueChanged<int?> onSelect;
   final VoidCallback onSelectFavorites;
+  final VoidCallback onSelectLearned;
   const _CategoryFilterBar(
       {required this.db,
       required this.selectedId,
       required this.favoritesSelected,
+      required this.learnedSelected,
       required this.onSelect,
-      required this.onSelectFavorites});
+      required this.onSelectFavorites,
+      required this.onSelectLearned});
 
   @override
   State<_CategoryFilterBar> createState() => _CategoryFilterBarState();
@@ -496,8 +556,9 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
         // created later (e.g. B5) never ends up out of sequence.
         final sorted = [...cats]
           ..sort((a, b) => _naturalCompare(a.name, b.name));
-        final noneSelected =
-            widget.selectedId == null && !widget.favoritesSelected;
+        final noneSelected = widget.selectedId == null &&
+            !widget.favoritesSelected &&
+            !widget.learnedSelected;
 
         final pills = <Widget>[
           _pill('All', noneSelected, () => widget.onSelect(null)),
@@ -506,6 +567,8 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
               icon: widget.favoritesSelected
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded),
+          _pill('Learned', widget.learnedSelected, widget.onSelectLearned,
+              icon: Icons.school_rounded),
           for (final c in sorted)
             _pill(
                 c.icon != null && c.icon!.isNotEmpty

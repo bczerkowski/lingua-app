@@ -141,6 +141,17 @@ class StudyController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Retire the current card as "learned": it's suspended so it won't come up
+  /// in study again, and it moves to the Learned filter in the dictionary.
+  Future<void> markLearned() async {
+    final c = current;
+    if (c == null) return;
+    await db.setLearned(c.id, true);
+    _queue.removeAt(0);
+    _undoSnapshot = null; // this action isn't part of the grade undo
+    notifyListeners();
+  }
+
   /// Pull [n] more brand-new cards into the queue, ignoring today's limit.
   /// Used by the "learn more" action on the finished screen.
   Future<void> learnMoreNew(int n, {int? catalogueId}) async {
