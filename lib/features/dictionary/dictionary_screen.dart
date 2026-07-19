@@ -593,13 +593,21 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
         );
 
         if (_expanded) {
+          // Cap the height and make the wrapped folders scroll vertically, so a
+          // long list never overflows the screen with no way to reach the rest.
+          final maxH = MediaQuery.of(context).size.height * 0.4;
           return Padding(
             padding: const EdgeInsets.fromLTRB(18, 2, 6, 2),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxH),
+                    child: SingleChildScrollView(
+                      child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                    ),
+                  ),
                 ),
                 toggle,
               ],

@@ -329,13 +329,19 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
         );
 
         if (_expanded) {
+          final maxH = MediaQuery.of(context).size.height * 0.4;
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 2, 6, 2),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxH),
+                    child: SingleChildScrollView(
+                      child: Wrap(spacing: 8, runSpacing: 8, children: pills),
+                    ),
+                  ),
                 ),
                 toggle,
               ],

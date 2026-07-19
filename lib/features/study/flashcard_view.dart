@@ -251,17 +251,17 @@ class _PromptWord extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(text,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                style: TextStyle(
-                    fontSize: 26 * scale,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                    color: Colors.black)),
-          ),
+          child: Text(text,
+              textAlign: TextAlign.center,
+              softWrap: true,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 26 * scale,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  color: Colors.black)),
         ),
         if (onSpeak != null)
           IconButton(
