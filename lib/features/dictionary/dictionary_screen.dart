@@ -509,7 +509,8 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
                     ? '${c.icon}  ${c.name}'
                     : c.name,
                 widget.selectedId == c.id,
-                () => widget.onSelect(c.id)),
+                () => widget.onSelect(c.id),
+                avatarBytes: c.iconBytes),
         ];
 
         final toggle = IconButton(
@@ -563,13 +564,19 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
   }
 
   Widget _pill(String label, bool selected, VoidCallback onTap,
-      {IconData? icon}) {
+      {IconData? icon, Uint8List? avatarBytes}) {
+    Widget? avatar;
+    if (avatarBytes != null) {
+      avatar = ClipOval(
+          child: Image.memory(avatarBytes,
+              width: 20, height: 20, fit: BoxFit.cover));
+    } else if (icon != null) {
+      avatar =
+          Icon(icon, size: 16, color: selected ? Colors.white : AppTheme.coral);
+    }
     return ChoiceChip(
       label: Text(label),
-      avatar: icon == null
-          ? null
-          : Icon(icon,
-              size: 16, color: selected ? Colors.white : AppTheme.coral),
+      avatar: avatar,
       selected: selected,
       onSelected: (_) => onTap(),
       showCheckmark: false,

@@ -6,6 +6,9 @@ class Catalogues extends Table {
   TextColumn get name => text().withLength(min: 1, max: 80)();
   TextColumn get color => text().nullable()(); // hex string for the UI chip
   TextColumn get icon => text().nullable()(); // a single emoji shown on the chip
+  // A small custom image (picked from disk) used as the chip icon; takes
+  // precedence over [icon] when set.
+  BlobColumn get iconBytes => blob().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

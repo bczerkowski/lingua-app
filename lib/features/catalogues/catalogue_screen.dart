@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
+import '../../services/media/image_import_service.dart';
 import '../../theme.dart';
 
 /// Create, rename, and delete the user's own categories (catalogues).
@@ -64,9 +68,16 @@ class CatalogueScreen extends StatelessWidget {
                     child: ListTile(
                       contentPadding:
                           const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      leading: Text(
-                          c.icon != null && c.icon!.isNotEmpty ? c.icon! : '📁',
-                          style: const TextStyle(fontSize: 24)),
+                      leading: c.iconBytes != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(c.iconBytes!,
+                                  width: 32, height: 32, fit: BoxFit.cover))
+                          : Text(
+                              c.icon != null && c.icon!.isNotEmpty
+                                  ? c.icon!
+                                  : '📁',
+                              style: const TextStyle(fontSize: 24)),
                       title: Text(c.name,
                           style: const TextStyle(
                               fontSize: 17, fontWeight: FontWeight.w600)),
@@ -108,77 +119,155 @@ class CatalogueScreen extends StatelessWidget {
       BuildContext context, AppDatabase db, Catalogue? existing) async {
     final ctrl = TextEditingController(text: existing?.name ?? '');
     String? icon = existing?.icon;
-    final result = await showDialog<(String, String?)>(
+    Uint8List? iconBytes = existing?.iconBytes;
+    final importer = ImageImportService();
+
+    final result = await showDialog<(String, String?, Uint8List?)>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text(existing == null ? 'New category' : 'Edit category'),
-          content: SizedBox(
-            width: 340,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  decoration:
-                      const InputDecoration(hintText: 'e.g. Medical, Travel…'),
-                ),
-                const SizedBox(height: 14),
-                Text('Icon', style: TextStyle(color: AppTheme.muted)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+        builder: (ctx, setLocal) {
+          Widget preview() {
+            if (iconBytes != null) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(iconBytes!,
+                    width: 44, height: 44, fit: BoxFit.cover),
+              );
+            }
+            return Text(icon?.isNotEmpty == true ? icon! : '📁',
+                style: const TextStyle(fontSize: 30));
+          }
+
+          return AlertDialog(
+            title: Text(existing == null ? 'New category' : 'Edit category'),
+            content: SizedBox(
+              width: 360,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final e in _emojis)
-                      InkWell(
-                        onTap: () => setLocal(() => icon = e),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: icon == e
-                                ? AppTheme.coral.withValues(alpha: 0.2)
-                                : null,
-                            border: Border.all(
-                                color: icon == e
-                                    ? AppTheme.coral
-                                    : AppTheme.border),
-                          ),
-                          child:
-                              Text(e, style: const TextStyle(fontSize: 20)),
+                    TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                          hintText: 'e.g. Medical, Travel…'),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        SizedBox(width: 44, height: 44, child: Center(child: preview())),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.image_outlined, size: 18),
+                          label: const Text('Choose image…'),
+                          onPressed: () async {
+                            final r = await importer.pickFromFile();
+                            if (!r.ok) return;
+                            final capped = await _capIcon(r.bytes!);
+                            setLocal(() {
+                              iconBytes = capped;
+                              icon = null;
+                            });
+                          },
                         ),
-                      ),
+                        if (iconBytes != null)
+                          IconButton(
+                            tooltip: 'Remove image',
+                            icon: const Icon(Icons.close, size: 20),
+                            onPressed: () =>
+                                setLocal(() => iconBytes = null),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text('…or pick an emoji',
+                        style: TextStyle(color: AppTheme.muted)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final e in _emojis)
+                          InkWell(
+                            onTap: () => setLocal(() {
+                              icon = e;
+                              iconBytes = null;
+                            }),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: (icon == e && iconBytes == null)
+                                    ? AppTheme.coral.withValues(alpha: 0.2)
+                                    : null,
+                                border: Border.all(
+                                    color: (icon == e && iconBytes == null)
+                                        ? AppTheme.coral
+                                        : AppTheme.border),
+                              ),
+                              child: Text(e,
+                                  style: const TextStyle(fontSize: 20)),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () =>
-                    Navigator.pop(ctx, (ctrl.text.trim(), icon)),
-                child: Text(existing == null ? 'Create' : 'Save')),
-          ],
-        ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(ctx, (ctrl.text.trim(), icon, iconBytes)),
+                  child: Text(existing == null ? 'Create' : 'Save')),
+            ],
+          );
+        },
       ),
     );
     if (result == null || result.$1.isEmpty) return;
-    final (name, chosenIcon) = result;
-    if (existing == null) {
-      await db.createCatalogue(name, icon: chosenIcon);
+    final (name, chosenIcon, chosenBytes) = result;
+    final id = existing?.id ?? await db.createCatalogue(name);
+    if (existing != null) await db.renameCatalogue(id, name);
+    if (chosenBytes != null) {
+      await db.setCatalogueIconBytes(id, chosenBytes);
     } else {
-      await db.renameCatalogue(existing.id, name);
-      await db.setCatalogueIcon(existing.id, chosenIcon);
+      await db.setCatalogueIconBytes(id, null);
+      await db.setCatalogueIcon(id, chosenIcon);
+    }
+  }
+
+  /// Downscale a picked image hard — it's only ever shown as a tiny chip icon,
+  /// so we keep the stored bytes very small.
+  Future<Uint8List> _capIcon(Uint8List input, {int maxDim = 96}) async {
+    try {
+      final codec = await ui.instantiateImageCodec(input);
+      final img = (await codec.getNextFrame()).image;
+      final longest = img.width > img.height ? img.width : img.height;
+      if (longest <= maxDim) {
+        img.dispose();
+        return input;
+      }
+      final scale = maxDim / longest;
+      final tw = (img.width * scale).round().clamp(1, maxDim);
+      final th = (img.height * scale).round().clamp(1, maxDim);
+      img.dispose();
+      final scaled = await ui.instantiateImageCodec(input,
+          targetWidth: tw, targetHeight: th);
+      final frame = (await scaled.getNextFrame()).image;
+      final data = await frame.toByteData(format: ui.ImageByteFormat.png);
+      frame.dispose();
+      return data?.buffer.asUint8List() ?? input;
+    } catch (_) {
+      return input;
     }
   }
 

@@ -301,7 +301,8 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
                     ? '${c.icon}  ${c.name}'
                     : c.name,
                 widget.selectedId == c.id,
-                () => widget.onSelect(c.id)),
+                () => widget.onSelect(c.id),
+                avatarBytes: c.iconBytes),
         ];
 
         final toggle = IconButton(
@@ -354,9 +355,15 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
     );
   }
 
-  Widget _pill(String label, bool selected, VoidCallback onTap) {
+  Widget _pill(String label, bool selected, VoidCallback onTap,
+      {Uint8List? avatarBytes}) {
     return ChoiceChip(
       label: Text(label),
+      avatar: avatarBytes == null
+          ? null
+          : ClipOval(
+              child: Image.memory(avatarBytes,
+                  width: 20, height: 20, fit: BoxFit.cover)),
       selected: selected,
       onSelected: (_) => onTap(),
       showCheckmark: false,

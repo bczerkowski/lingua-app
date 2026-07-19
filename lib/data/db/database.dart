@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -52,6 +52,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await m.addColumn(catalogues, catalogues.icon);
+          }
+          if (from < 8) {
+            await m.addColumn(catalogues, catalogues.iconBytes);
           }
         },
         beforeOpen: (details) async {
@@ -80,6 +83,10 @@ class AppDatabase extends _$AppDatabase {
           if (!catNames.contains('icon')) {
             await customStatement(
                 'ALTER TABLE catalogues ADD COLUMN icon TEXT');
+          }
+          if (!catNames.contains('icon_bytes')) {
+            await customStatement(
+                'ALTER TABLE catalogues ADD COLUMN icon_bytes BLOB');
           }
           // Ensure the meanings table exists AND has the expected columns;
           // recreate it if missing or malformed (e.g. a half-applied migration).
@@ -118,6 +125,14 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setCatalogueIcon(int id, String? icon) =>
       (update(catalogues)..where((t) => t.id.equals(id)))
           .write(CataloguesCompanion(icon: Value(icon)));
+
+  /// Set (or clear) a custom image icon for a category. Passing bytes clears
+  /// any emoji so the image is used; passing null clears the image.
+  Future<void> setCatalogueIconBytes(int id, Uint8List? bytes) =>
+      (update(catalogues)..where((t) => t.id.equals(id))).write(
+          CataloguesCompanion(
+              iconBytes: Value(bytes),
+              icon: bytes != null ? const Value(null) : const Value.absent()));
 
   /// Delete a catalogue; any cards pointing at it become uncategorized.
   Future<void> deleteCatalogue(int id) async {
@@ -495,6 +510,9 @@ class AppDatabase extends _$AppDatabase {
             'id': c.id,
             'name': c.name,
             'color': c.color,
+            'icon': c.icon,
+            'iconBytes':
+                c.iconBytes == null ? null : base64Encode(c.iconBytes!),
             'createdAt': c.createdAt.millisecondsSinceEpoch,
           }
       ],
@@ -575,6 +593,10 @@ class AppDatabase extends _$AppDatabase {
                 id: Value(c['id'] as int),
                 name: Value(c['name'] as String),
                 color: Value(c['color'] as String?),
+                icon: Value(c['icon'] as String?),
+                iconBytes: Value(c['iconBytes'] == null
+                    ? null
+                    : base64Decode(c['iconBytes'] as String)),
                 createdAt: Value(ms(c['createdAt'])),
               ),
               mode: InsertMode.insertOrReplace);
