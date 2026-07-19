@@ -296,7 +296,11 @@ class _StudyCategoryBarState extends State<_StudyCategoryBar> {
         final pills = <Widget>[
           _pill('All', widget.selectedId == null, () => widget.onSelect(null)),
           for (final c in sorted)
-            _pill(c.name, widget.selectedId == c.id,
+            _pill(
+                c.icon != null && c.icon!.isNotEmpty
+                    ? '${c.icon}  ${c.name}'
+                    : c.name,
+                widget.selectedId == c.id,
                 () => widget.onSelect(c.id)),
         ];
 

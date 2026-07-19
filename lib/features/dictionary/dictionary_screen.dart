@@ -504,7 +504,11 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded),
           for (final c in sorted)
-            _pill(c.name, widget.selectedId == c.id,
+            _pill(
+                c.icon != null && c.icon!.isNotEmpty
+                    ? '${c.icon}  ${c.name}'
+                    : c.name,
+                widget.selectedId == c.id,
                 () => widget.onSelect(c.id)),
         ];
 

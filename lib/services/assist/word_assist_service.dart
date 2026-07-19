@@ -118,6 +118,17 @@ class WordAssistService {
   Future<String?> aiDefinition(String english) =>
       _generate(definitionPrompt(english));
 
+  /// Prompt for the top English synonyms, formatted for the Note field.
+  static String synonymsPrompt(String english) =>
+      "Give the top 3 to 5 English synonyms for the term \"$english\" (it may "
+      "be a word, phrasal verb, idiom, or expression). Return them on ONE line "
+      "in EXACTLY this format: Syn: word1, word2, word3 — no other text, no "
+      "explanations, no quotes. If there are no real synonyms, return: Syn: —";
+
+  /// Top synonyms as a one-line "Syn: a, b, c" string for the Note field.
+  Future<String?> aiSynonyms(String english) =>
+      _generate(synonymsPrompt(english));
+
   /// Generates text with the best available engine: Gemini first (higher
   /// quality) when a key is set, then the free keyless Pollinations text model
   /// as a fallback (so rate limits / no key don't block generation).

@@ -64,6 +64,9 @@ class CatalogueScreen extends StatelessWidget {
                     child: ListTile(
                       contentPadding:
                           const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Text(
+                          c.icon != null && c.icon!.isNotEmpty ? c.icon! : '📁',
+                          style: const TextStyle(fontSize: 24)),
                       title: Text(c.name,
                           style: const TextStyle(
                               fontSize: 17, fontWeight: FontWeight.w600)),
@@ -95,34 +98,87 @@ class CatalogueScreen extends StatelessWidget {
     );
   }
 
+  static const _emojis = [
+    '📁', '📚', '🎓', '✈️', '🩺', '⚖️', '💼', '🧠', '💬', '🗣️',
+    '🌍', '🍎', '🔬', '🎬', '🎵', '⚽', '🐾', '🍳', '💰', '❤️',
+    '⭐', '🔥', '🚀', '🧩', '📝', '🏛️', '🌱', '⚙️'
+  ];
+
   Future<void> _edit(
       BuildContext context, AppDatabase db, Catalogue? existing) async {
     final ctrl = TextEditingController(text: existing?.name ?? '');
-    final name = await showDialog<String>(
+    String? icon = existing?.icon;
+    final result = await showDialog<(String, String?)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existing == null ? 'New category' : 'Rename category'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(hintText: 'e.g. Medical, Travel…'),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(existing == null ? 'New category' : 'Edit category'),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration:
+                      const InputDecoration(hintText: 'e.g. Medical, Travel…'),
+                ),
+                const SizedBox(height: 14),
+                Text('Icon', style: TextStyle(color: AppTheme.muted)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final e in _emojis)
+                      InkWell(
+                        onTap: () => setLocal(() => icon = e),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: icon == e
+                                ? AppTheme.coral.withValues(alpha: 0.2)
+                                : null,
+                            border: Border.all(
+                                color: icon == e
+                                    ? AppTheme.coral
+                                    : AppTheme.border),
+                          ),
+                          child:
+                              Text(e, style: const TextStyle(fontSize: 20)),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, (ctrl.text.trim(), icon)),
+                child: Text(existing == null ? 'Create' : 'Save')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text(existing == null ? 'Create' : 'Save')),
-        ],
       ),
     );
-    if (name == null || name.isEmpty) return;
+    if (result == null || result.$1.isEmpty) return;
+    final (name, chosenIcon) = result;
     if (existing == null) {
-      await db.createCatalogue(name);
+      await db.createCatalogue(name, icon: chosenIcon);
     } else {
       await db.renameCatalogue(existing.id, name);
+      await db.setCatalogueIcon(existing.id, chosenIcon);
     }
   }
 

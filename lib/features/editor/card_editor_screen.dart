@@ -40,6 +40,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   bool _generating = false;
   bool _saving = false;
   bool _loaded = false;
+  bool _genSyn = false;
   final ImageImportService _importer = ImageImportService();
   final WordAssistService _assist = WordAssistService();
   String? _busyAction; // which assist button is currently running
@@ -50,13 +51,24 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
 
   bool get _isNew => widget.cardId == null;
 
+  // All tags already used in the deck — powers the tag autocomplete.
+  List<String> _allTags = [];
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
+      _loadTags();
       if (!_isNew) _loadCard();
     }
+  }
+
+  Future<void> _loadTags() async {
+    try {
+      final tags = await AppServices.of(context).db.allTags();
+      if (mounted) setState(() => _allTags = tags);
+    } catch (_) {/* autocomplete is a nicety; ignore failures */}
   }
 
   Future<void> _loadCard() async {
@@ -155,6 +167,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
               // Re-seed the chip editor once the card's tags have loaded.
               key: ValueKey('tags_${_tagList.join('|')}'),
               initial: _tagList,
+              suggestions: _allTags,
               onChanged: (t) => _tagList = t,
             ),
             _assistRow('Suggest tags', Icons.sell_outlined, 'tags',
@@ -177,6 +190,19 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             // Personal note — kept last; shown subtly on the study card.
             _field(_note, 'Note (optional — tips, mnemonics)',
                 maxLines: 3, maxLength: 500),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: _genSyn
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome_outlined, size: 18),
+                label: const Text('Generate top synonyms'),
+                onPressed: _genSyn ? null : _genSynonyms,
+              ),
+            ),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: _saving
@@ -421,6 +447,33 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     } else {
       await _noAiToast('definition', word);
     }
+  }
+
+  /// Generate the top synonyms and APPEND them to the Note (never overwriting
+  /// any existing note text).
+  Future<void> _genSynonyms() async {
+    if (!_needEnglish()) return;
+    final word = _english.text.trim();
+    setState(() => _genSyn = true);
+    String? syn;
+    try {
+      syn = await _assist.aiSynonyms(word);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _genSyn = false);
+        _toast('AI synonyms failed — $e');
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _genSyn = false);
+    final line = syn?.trim() ?? '';
+    if (line.isEmpty) {
+      await _noAiToast('synonyms', word);
+      return;
+    }
+    final current = _note.text.trimRight();
+    _note.text = current.isEmpty ? line : '$current\n$line';
   }
 
   /// When both AI and the dictionary come up empty, nudge the user toward the
@@ -884,9 +937,13 @@ class _CatalogueDropdown extends StatelessWidget {
 /// into a chip. The first chip is the part of speech.
 class _TagInput extends StatefulWidget {
   final List<String> initial;
+  final List<String> suggestions;
   final ValueChanged<List<String>> onChanged;
   const _TagInput(
-      {super.key, required this.initial, required this.onChanged});
+      {super.key,
+      required this.initial,
+      this.suggestions = const [],
+      required this.onChanged});
 
   @override
   State<_TagInput> createState() => _TagInputState();
@@ -962,13 +1019,48 @@ class _TagInputState extends State<_TagInput> {
             ),
           IntrinsicWidth(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 90),
-              child: TextField(
-                controller: _ctrl,
+              constraints: const BoxConstraints(minWidth: 110),
+              child: RawAutocomplete<String>(
+                textEditingController: _ctrl,
                 focusNode: _focus,
-                decoration: const InputDecoration.collapsed(hintText: 'add tag…'),
-                onChanged: _onChanged,
-                onSubmitted: _commit,
+                optionsBuilder: (value) {
+                  final q = value.text.trim().toLowerCase();
+                  if (q.isEmpty) return const Iterable<String>.empty();
+                  return widget.suggestions.where((s) =>
+                      s.toLowerCase().contains(q) && !_tags.contains(s));
+                },
+                onSelected: (s) => _commit(s),
+                fieldViewBuilder: (context, ctrl, focus, onSubmit) => TextField(
+                  controller: ctrl,
+                  focusNode: focus,
+                  decoration:
+                      const InputDecoration.collapsed(hintText: 'add tag…'),
+                  onChanged: _onChanged,
+                  onSubmitted: _commit,
+                ),
+                optionsViewBuilder: (context, onSelected, options) => Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints:
+                          const BoxConstraints(maxHeight: 220, maxWidth: 240),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        children: [
+                          for (final o in options)
+                            ListTile(
+                              dense: true,
+                              title: Text('#$o'),
+                              onTap: () => onSelected(o),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

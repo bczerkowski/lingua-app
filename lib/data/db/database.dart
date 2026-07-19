@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +50,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 6) {
             await m.addColumn(cards, cards.isFavorite);
           }
+          if (from < 7) {
+            await m.addColumn(catalogues, catalogues.icon);
+          }
         },
         beforeOpen: (details) async {
           // Defensive: guarantee newer columns / tables exist even if a prior
@@ -69,6 +72,14 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('ALTER TABLE cards ADD COLUMN '
                 'is_favorite INTEGER NOT NULL DEFAULT 0 '
                 'CHECK (is_favorite IN (0, 1))');
+          }
+          // Defensive: the catalogues.icon column (schema v7).
+          final catCols =
+              await customSelect("PRAGMA table_info('catalogues')").get();
+          final catNames = catCols.map((r) => r.read<String>('name')).toSet();
+          if (!catNames.contains('icon')) {
+            await customStatement(
+                'ALTER TABLE catalogues ADD COLUMN icon TEXT');
           }
           // Ensure the meanings table exists AND has the expected columns;
           // recreate it if missing or malformed (e.g. a half-applied migration).
@@ -95,12 +106,18 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------------
   Stream<List<Catalogue>> watchCatalogues() => select(catalogues).watch();
 
-  Future<int> createCatalogue(String name, {String? color}) => into(catalogues)
-      .insert(CataloguesCompanion.insert(name: name, color: Value(color)));
+  Future<int> createCatalogue(String name, {String? color, String? icon}) =>
+      into(catalogues).insert(CataloguesCompanion.insert(
+          name: name, color: Value(color), icon: Value(icon)));
 
   Future<void> renameCatalogue(int id, String name) =>
       (update(catalogues)..where((t) => t.id.equals(id)))
           .write(CataloguesCompanion(name: Value(name.trim())));
+
+  /// Set (or clear, with null) the emoji icon shown on a category's chip.
+  Future<void> setCatalogueIcon(int id, String? icon) =>
+      (update(catalogues)..where((t) => t.id.equals(id)))
+          .write(CataloguesCompanion(icon: Value(icon)));
 
   /// Delete a catalogue; any cards pointing at it become uncategorized.
   Future<void> deleteCatalogue(int id) async {
@@ -415,6 +432,23 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Flashcard?> getCard(int id) =>
       (select(cards)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// Every distinct tag used across the deck, sorted A–Z. Powers the tag
+  /// autocomplete in the card editor so tags stay consistent (e.g. "Academia").
+  Future<List<String>> allTags() async {
+    final rows = await (selectOnly(cards)..addColumns([cards.tags])).get();
+    final set = <String>{};
+    for (final r in rows) {
+      final raw = r.read(cards.tags) ?? '';
+      for (final part in raw.split(';')) {
+        final p = part.trim();
+        if (p.isNotEmpty) set.add(p);
+      }
+    }
+    final list = set.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
 
   // ---------------------------------------------------------------------------
   // Meanings (additional, beyond the primary meaning stored on the card)
