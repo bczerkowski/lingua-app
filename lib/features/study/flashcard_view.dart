@@ -418,8 +418,12 @@ class _ImageAnchor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // On phones the card is narrow, so a 16:9 frame comes out short and small.
+    // Use a taller 4:3 frame under ~600px to give the picture noticeably more
+    // area; keep the wider 16:9 on tablets/desktop where width isn't scarce.
+    final isPhone = MediaQuery.of(context).size.width < 600;
     return AspectRatio(
-      aspectRatio: 16 / 9,
+      aspectRatio: isPhone ? 4 / 3 : 16 / 9,
       child: Container(
         decoration: BoxDecoration(
           color: AppTheme.sand,
