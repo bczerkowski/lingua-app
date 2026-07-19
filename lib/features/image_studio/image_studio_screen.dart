@@ -520,6 +520,14 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
         children: [
           Text('${i + 1}.  ${c.english}  ·  ${c.polish}',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          if (_scene(c).trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('“${_scene(c).trim()}”',
+                style: const TextStyle(
+                    fontStyle: FontStyle.italic,
+                    fontSize: 13,
+                    color: Color(0xFF55524B))),
+          ],
           const SizedBox(height: 8),
           if (img != null)
             Row(
