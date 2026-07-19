@@ -75,6 +75,13 @@ class _FlashcardViewState extends State<FlashcardView>
         if (m.polishTranslation.trim().isNotEmpty) m.polishTranslation.trim(),
     ].join(', ');
 
+    // On a wider card (desktop) grow the type proportionally so the headword
+    // and translation don't stay at their compact phone size.
+    final screenW = MediaQuery.of(context).size.width;
+    final cardW =
+        screenW < 620 ? screenW : (screenW * 0.72).clamp(560.0, 880.0);
+    final scale = (cardW / 560).clamp(1.0, 1.35).toDouble();
+
     return GestureDetector(
       onTap: widget.revealed ? null : widget.onReveal,
       child: AnimatedBuilder(
@@ -95,6 +102,7 @@ class _FlashcardViewState extends State<FlashcardView>
                         child: _Back(
                             card: widget.card,
                             polish: polish,
+                            scale: scale,
                             onSpeak: widget.onSpeak)),
                   )
                 : _CardFace(
@@ -102,6 +110,7 @@ class _FlashcardViewState extends State<FlashcardView>
                         card: widget.card,
                         polish: polish,
                         direction: widget.direction,
+                        scale: scale,
                         onSpeak: widget.onSpeak)),
           );
         },
@@ -181,9 +190,13 @@ class _TagHeader extends StatelessWidget {
 class _TargetLine extends StatelessWidget {
   final Flashcard card;
   final String polish;
+  final double scale;
   final void Function(String, String) onSpeak;
   const _TargetLine(
-      {required this.card, required this.polish, required this.onSpeak});
+      {required this.card,
+      required this.polish,
+      this.scale = 1.0,
+      required this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -194,27 +207,28 @@ class _TargetLine extends StatelessWidget {
         Flexible(
           child: Text(card.english,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 21,
+              style: TextStyle(
+                  fontSize: 21 * scale,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
                   color: Colors.black)),
         ),
         IconButton(
-          icon: const Icon(Icons.volume_up_rounded, size: 18),
+          icon: Icon(Icons.volume_up_rounded, size: 18 * scale),
           color: scheme.primary,
           tooltip: 'Hear English',
           visualDensity: VisualDensity.compact,
           onPressed: () => onSpeak(card.english, 'en-US'),
         ),
-        Text('·', style: TextStyle(fontSize: 20, color: Colors.grey.shade300)),
+        Text('·',
+            style: TextStyle(fontSize: 20 * scale, color: Colors.grey.shade300)),
         Flexible(
           child: Text(polish,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 19,
+              style: TextStyle(
+                  fontSize: 19 * scale,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF3A3833))),
+                  color: const Color(0xFF3A3833))),
         ),
       ],
     );
@@ -226,8 +240,9 @@ class _TargetLine extends StatelessWidget {
 /// compact instead of breaking into oversized stacked letters.
 class _PromptWord extends StatelessWidget {
   final String text;
+  final double scale;
   final VoidCallback? onSpeak;
-  const _PromptWord({required this.text, this.onSpeak});
+  const _PromptWord({required this.text, this.scale = 1.0, this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -241,8 +256,8 @@ class _PromptWord extends StatelessWidget {
             child: Text(text,
                 textAlign: TextAlign.center,
                 maxLines: 1,
-                style: const TextStyle(
-                    fontSize: 26,
+                style: TextStyle(
+                    fontSize: 26 * scale,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
                     color: Colors.black)),
@@ -250,7 +265,7 @@ class _PromptWord extends StatelessWidget {
         ),
         if (onSpeak != null)
           IconButton(
-            icon: const Icon(Icons.volume_up_rounded, size: 20),
+            icon: Icon(Icons.volume_up_rounded, size: 20 * scale),
             color: scheme.primary,
             tooltip: 'Hear it',
             onPressed: onSpeak,
@@ -264,23 +279,27 @@ class _Front extends StatelessWidget {
   final Flashcard card;
   final String polish;
   final StudyDirection direction;
+  final double scale;
   final void Function(String, String) onSpeak;
   const _Front(
       {required this.card,
       required this.polish,
       required this.direction,
+      this.scale = 1.0,
       required this.onSpeak});
 
   Widget _prompt() {
     switch (direction) {
       case StudyDirection.both:
-        return _TargetLine(card: card, polish: polish, onSpeak: onSpeak);
+        return _TargetLine(
+            card: card, polish: polish, scale: scale, onSpeak: onSpeak);
       case StudyDirection.englishToPolish:
         return _PromptWord(
             text: card.english,
+            scale: scale,
             onSpeak: () => onSpeak(card.english, 'en-US'));
       case StudyDirection.polishToEnglish:
-        return _PromptWord(text: polish);
+        return _PromptWord(text: polish, scale: scale);
     }
   }
 
@@ -307,9 +326,13 @@ class _Front extends StatelessWidget {
 class _Back extends StatelessWidget {
   final Flashcard card;
   final String polish;
+  final double scale;
   final void Function(String, String) onSpeak;
   const _Back(
-      {required this.card, required this.polish, required this.onSpeak});
+      {required this.card,
+      required this.polish,
+      this.scale = 1.0,
+      required this.onSpeak});
 
   @override
   Widget build(BuildContext context) {
@@ -320,7 +343,7 @@ class _Back extends StatelessWidget {
         _TagHeader(card: card),
         const SizedBox(height: 14),
         // English · all Polish translations.
-        _TargetLine(card: card, polish: polish, onSpeak: onSpeak),
+        _TargetLine(card: card, polish: polish, scale: scale, onSpeak: onSpeak),
         const Divider(height: 26),
         if (card.exampleSentence != null && card.exampleSentence!.isNotEmpty) ...[
           Row(
@@ -331,7 +354,7 @@ class _Back extends StatelessWidget {
                     style: TextStyle(
                         fontStyle: FontStyle.italic,
                         fontSize: _fitSize(card.exampleSentence!,
-                            max: 16, min: 12.5),
+                            max: 16 * scale, min: 12.5 * scale),
                         height: 1.4)),
               ),
               IconButton(
@@ -347,7 +370,8 @@ class _Back extends StatelessWidget {
             card.englishDefinition!.isNotEmpty)
           Text(card.englishDefinition!,
               style: TextStyle(
-                  fontSize: _fitSize(card.englishDefinition!, max: 15, min: 12),
+                  fontSize: _fitSize(card.englishDefinition!,
+                      max: 15 * scale, min: 12 * scale),
                   height: 1.35,
                   color: Colors.black)),
         const SizedBox(height: 18),
