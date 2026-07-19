@@ -90,6 +90,12 @@ class _StudyScreenState extends State<StudyScreen> {
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
     final ctrl = _ctrl!;
+    // Widen the study card on bigger screens instead of pinning it to a narrow
+    // phone width — on a wide monitor 560px left huge empty margins.
+    final screenW = MediaQuery.of(context).size.width;
+    final double contentW = screenW < 620
+        ? screenW
+        : (screenW * 0.72).clamp(560.0, 880.0).toDouble();
 
     return Scaffold(
       appBar: AppBar(
@@ -152,7 +158,7 @@ class _StudyScreenState extends State<StudyScreen> {
                   child: Align(
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
+                      constraints: BoxConstraints(maxWidth: contentW),
                       child: SingleChildScrollView(
                         // SelectionArea makes the card's text highlightable and
                         // copyable (drag to select, then Ctrl/Cmd+C or
@@ -176,7 +182,7 @@ class _StudyScreenState extends State<StudyScreen> {
               // Bottom action area: a single big "Show Answer" until revealed,
               // then the four grading buttons (keeps the thumb at the bottom).
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
+                constraints: BoxConstraints(maxWidth: contentW),
                 child: _revealed
                     ? _GradeBar(
                         onGrade: (g) {
