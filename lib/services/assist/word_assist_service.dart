@@ -85,18 +85,24 @@ class WordAssistService {
   }
 
   /// Prompt for example sentences (shared by the generator and Copy prompt).
-  /// Produces THREE themed sentences: academic, aviation, and a very visual
-  /// one meant to drive image generation.
+  /// Produces THREE natural, real-life sentences (everyday + conversational +
+  /// a very visual one meant to drive image generation).
   static String examplePrompt(String english) =>
       "You are helping build a language-learning flashcard for the English "
       "term \"$english\" (it may be a word, phrasal verb, idiom or expression; "
       "replace any placeholder like 'something'/'someone' with a real word). "
-      "Write THREE example sentences that use the term correctly and "
-      "idiomatically, each on its OWN line, labelled EXACTLY like this:\n"
-      "Akademickie: <a formal, academic-register sentence>\n"
-      "Lotnicze: <a sentence set in an aviation / flying context>\n"
-      "Obrazowe: <a very vivid, concrete, visual scene describing what is "
-      "happening — rich in imagery, ideal for generating an illustration>\n"
+      "Write THREE natural, real-life example sentences that a real person "
+      "would actually say or read in everyday life — ordinary situations such "
+      "as home, work, friends, shopping, travel, food or daily routines. Do "
+      "NOT use fantasy, magic, fairy-tale, sci-fi or contrived academic "
+      "settings; keep them grounded and true to life. Each on its OWN line, "
+      "labelled EXACTLY like this:\n"
+      "Codzienne: <an everyday, real-life sentence in a common situation>\n"
+      "Rozmowa: <a casual, conversational sentence, the way people really "
+      "speak>\n"
+      "Obrazowe: <a vivid, concrete, realistic everyday scene describing what "
+      "is happening — true to life and rich in visual detail, ideal for a "
+      "photo illustration>\n"
       "Return ONLY those three labelled lines. No intro, no quotes, no extra "
       "text.";
 

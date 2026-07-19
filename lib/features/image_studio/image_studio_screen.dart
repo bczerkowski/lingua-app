@@ -28,7 +28,7 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
   final ImageImportService _importer = ImageImportService();
   final FocusNode _focus = FocusNode();
 
-  static const int _kBatchSize = 3;
+  static const int _kBatchSize = 5;
 
   List<Flashcard> _cards = const [];
   int _index = 0;
