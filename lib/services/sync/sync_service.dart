@@ -426,6 +426,76 @@ class SyncService extends ChangeNotifier {
     return (uploaded: uploaded, failed: failed, error: sampleError);
   }
 
+  /// Recovery: list every image already sitting in Storage under this user's
+  /// folder and re-link it to its card by the id embedded in the object name
+  /// (`{uid}/{micros}-{cardId}.jpg`). Only cards that currently have NO image
+  /// are touched, so nothing is overwritten. Returns (relinked, found) counts.
+  ///
+  /// This rescues pictures whose local copy was lost but whose Storage upload
+  /// had succeeded — the deck simply forgot the URL.
+  Future<({int relinked, int found, String? error})>
+      relinkImagesFromStorage() async {
+    if (!signedIn) return (relinked: 0, found: 0, error: 'not signed in');
+    try {
+      await _ensureToken();
+      final names = <String>[];
+      var offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        final r = await _dio.post('/storage/v1/object/list/$imageBucket',
+            data: {
+              'prefix': '$_uid/',
+              'limit': pageSize,
+              'offset': offset,
+              'sortBy': {'column': 'name', 'order': 'asc'},
+            },
+            options: Options(headers: _restHeaders));
+        final list = (r.data as List?) ?? const [];
+        for (final o in list) {
+          final n = (o is Map) ? o['name'] : null;
+          if (n is String) names.add(n);
+        }
+        if (list.length < pageSize) break;
+        offset += pageSize;
+      }
+      // Map cardId -> the most recent object filename for it.
+      final re = RegExp(r'(\d+)-(\d+)\.jpg$'); // {micros}-{cardId}.jpg
+      final best = <int, ({String name, int micros})>{};
+      for (final n in names) {
+        final m = re.firstMatch(n);
+        if (m == null) continue;
+        final micros = int.tryParse(m.group(1)!) ?? 0;
+        final cardId = int.tryParse(m.group(2)!) ?? -1;
+        if (cardId < 0) continue;
+        final cur = best[cardId];
+        if (cur == null || micros > cur.micros) {
+          best[cardId] = (name: n, micros: micros);
+        }
+      }
+      // Re-link only cards that currently have no image at all.
+      final missing = await db.cardsWithoutImage();
+      var relinked = 0;
+      for (final c in missing) {
+        final b = best[c.id];
+        if (b == null) continue;
+        final path =
+            b.name.startsWith('$_uid/') ? b.name : '$_uid/${b.name}';
+        final url =
+            '${SupabaseConfig.url}/storage/v1/object/public/$imageBucket/$path';
+        await db.setImageUrl(c.id, url);
+        relinked++;
+      }
+      if (relinked > 0) {
+        try {
+          await _push(force: true);
+        } catch (_) {/* normal sync will retry the deck push */}
+      }
+      return (relinked: relinked, found: best.length, error: null);
+    } catch (e) {
+      return (relinked: 0, found: 0, error: _friendly(e));
+    }
+  }
+
   // --- Change listeners --------------------------------------------------
   void _listenLocal() {
     _localSub = db.tableUpdates().listen((_) {

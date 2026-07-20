@@ -1190,6 +1190,7 @@ class _ManageMenu extends StatelessWidget {
         }
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
+        if (v == 'recover_images') _recoverImages(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1303,6 +1304,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.cloud_sync_outlined),
             title: Text('Sync images to cloud'),
             subtitle: Text('Upload photos to Storage so they reach mobile'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'recover_images',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.restore_rounded),
+            title: Text('Recover images from cloud'),
+            subtitle: Text('Re-link photos still in Storage to their cards'),
           ),
         ),
         PopupMenuItem(
@@ -1647,6 +1657,35 @@ class _ManageMenu extends StatelessWidget {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));
+    }
+  }
+
+  /// Recover images that are still in Storage but lost their link on the deck
+  /// (e.g. after a sync-down erased a local-only picture). Re-links by card id.
+  Future<void> _recoverImages(BuildContext context) async {
+    final sync = AppServices.of(context).sync;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!sync.signedIn) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Sign in to Cloud sync first (⋮ → Cloud sync).')));
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Scanning cloud storage for images…')),
+    );
+    try {
+      final r = await sync.relinkImagesFromStorage();
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text(r.error != null
+            ? 'Recovery failed: ${r.error}'
+            : r.relinked == 0
+                ? 'Nothing to recover — found ${r.found} images in storage, '
+                    'all already linked.'
+                : 'Recovered ${r.relinked} images (of ${r.found} in storage).'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Recovery failed: $e')));
     }
   }
 
