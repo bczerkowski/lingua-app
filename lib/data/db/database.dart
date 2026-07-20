@@ -711,7 +711,14 @@ class AppDatabase extends _$AppDatabase {
   /// Replace the entire deck with the contents of a backup produced by
   /// [exportDeck]. Returns how many cards/catalogues were restored. Throws a
   /// [FormatException] on a file that isn't a Lexicon backup.
-  Future<({int cards, int catalogues})> importDeck(String jsonStr) async {
+  ///
+  /// When [preserveLocalImages] is true (used by cloud sync), any image that
+  /// exists on THIS device but is missing from the incoming deck is kept — so a
+  /// pull of a cloud copy that hasn't received a freshly-added image yet can
+  /// never erase it. Manual "restore from file" leaves it false for an exact
+  /// restore.
+  Future<({int cards, int catalogues})> importDeck(String jsonStr,
+      {bool preserveLocalImages = false}) async {
     final dynamic parsed = jsonDecode(jsonStr);
     if (parsed is! Map<String, dynamic> || parsed['app'] != 'lexicon') {
       throw const FormatException('This file is not a Lexicon backup.');
@@ -725,6 +732,20 @@ class AppDatabase extends _$AppDatabase {
 
     DateTime ms(Object? v) =>
         DateTime.fromMillisecondsSinceEpoch((v as num).toInt());
+
+    // Snapshot local images before we wipe, so we can restore any that the
+    // incoming deck doesn't carry.
+    final localImages =
+        <int, ({Uint8List? bytes, String? url, String? source})>{};
+    if (preserveLocalImages) {
+      final existing = await (select(cards)
+            ..where((t) => t.imageBytes.isNotNull() | t.imageUrl.isNotNull()))
+          .get();
+      for (final c in existing) {
+        localImages[c.id] =
+            (bytes: c.imageBytes, url: c.imageUrl, source: c.imageSource);
+      }
+    }
 
     await transaction(() async {
       await delete(meanings).go();
@@ -793,6 +814,32 @@ class AppDatabase extends _$AppDatabase {
               mode: InsertMode.insertOrReplace);
         }
       });
+
+      // Restore any local-only image the incoming deck didn't include, so a
+      // sync-down never loses a picture that hasn't reached the cloud yet.
+      if (preserveLocalImages && localImages.isNotEmpty) {
+        for (final c in cardList) {
+          final id = c['id'] as int;
+          final snap = localImages[id];
+          if (snap == null) continue;
+          final hasLocal =
+              snap.bytes != null || (snap.url != null && snap.url!.isNotEmpty);
+          if (!hasLocal) continue;
+          final inBytes = c['imageBytes'] as String?;
+          final inUrl = c['imageUrl'] as String?;
+          final incomingHasImage =
+              (inBytes != null && inBytes.isNotEmpty) ||
+                  (inUrl != null && inUrl.isNotEmpty);
+          if (incomingHasImage) continue; // cloud has one — keep the cloud copy
+          await (update(cards)..where((t) => t.id.equals(id))).write(
+            CardsCompanion(
+              imageBytes: Value(snap.bytes),
+              imageUrl: Value(snap.url),
+              imageSource: Value(snap.source),
+            ),
+          );
+        }
+      }
     });
     return (cards: cardList.length, catalogues: catList.length);
   }

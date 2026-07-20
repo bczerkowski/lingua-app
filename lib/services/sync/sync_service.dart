@@ -339,7 +339,9 @@ class SyncService extends ChangeNotifier {
     }
     _applyingRemote = true;
     try {
-      await db.importDeck(data);
+      // Preserve any image that only exists on this device: a cloud copy that
+      // hasn't received a freshly-added picture yet must never erase it.
+      await db.importDeck(data, preserveLocalImages: true);
       _lastSyncedData = data;
       _lastSyncedAt = updatedAt;
       await _writeLastAt(updatedAt);

@@ -5,6 +5,7 @@ import 'data/db/database.dart';
 import 'data/seed.dart';
 import 'features/home/home_screen.dart';
 import 'services/sync/sync_service.dart';
+import 'services/util/persist_storage.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -34,6 +35,14 @@ Future<void> main() async {
       ),
     );
   };
+
+  // Ask the browser to keep local storage durable, so the deck (and its images)
+  // can't be silently evicted between sessions. Best-effort, never blocks paint.
+  Future(() async {
+    try {
+      await requestPersistentStorage();
+    } catch (_) {/* ignore — stays best-effort */}
+  });
 
   final db = AppDatabase();
   // Seed in the background so a slow/failed DB open never blocks first paint.
