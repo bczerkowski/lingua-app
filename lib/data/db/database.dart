@@ -37,6 +37,7 @@ class EntryLite {
   final String? imageUrl;
   final bool isCard;
   final bool isFavorite;
+  final bool inLesson;
   final bool hasLocalImage; // imageBytes IS NOT NULL (not loaded here)
   const EntryLite({
     required this.id,
@@ -48,6 +49,7 @@ class EntryLite {
     required this.imageUrl,
     required this.isCard,
     required this.isFavorite,
+    required this.inLesson,
     required this.hasLocalImage,
   });
 
@@ -63,7 +65,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -90,6 +92,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 8) {
             await m.addColumn(catalogues, catalogues.iconBytes);
           }
+          if (from < 9) {
+            await m.addColumn(cards, cards.inLesson);
+          }
         },
         beforeOpen: (details) async {
           // Defensive: guarantee newer columns / tables exist even if a prior
@@ -109,6 +114,11 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('ALTER TABLE cards ADD COLUMN '
                 'is_favorite INTEGER NOT NULL DEFAULT 0 '
                 'CHECK (is_favorite IN (0, 1))');
+          }
+          if (!names.contains('in_lesson')) {
+            await customStatement('ALTER TABLE cards ADD COLUMN '
+                'in_lesson INTEGER NOT NULL DEFAULT 0 '
+                'CHECK (in_lesson IN (0, 1))');
           }
           // Defensive: the catalogues.icon column (schema v7).
           final catCols =
@@ -210,7 +220,8 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Flashcard>> searchEntries(String query,
       {int? catalogueId,
       bool favoritesOnly = false,
-      bool learnedOnly = false}) {
+      bool learnedOnly = false,
+      bool lessonOnly = false}) {
     final q = query.trim();
     final sel = select(cards)
       ..orderBy([(t) => OrderingTerm(expression: t.english)])
@@ -225,6 +236,9 @@ class AppDatabase extends _$AppDatabase {
     if (favoritesOnly) {
       sel.where((t) => t.isFavorite.equals(true));
     }
+    if (lessonOnly) {
+      sel.where((t) => t.inLesson.equals(true));
+    }
     // "Learned" entries (suspended) are hidden from the normal views and
     // gathered under the Learned filter — and never come up in study.
     sel.where((t) => t.suspended.equals(learnedOnly));
@@ -236,7 +250,8 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<EntryLite>> searchEntriesLite(String query,
       {int? catalogueId,
       bool favoritesOnly = false,
-      bool learnedOnly = false}) {
+      bool learnedOnly = false,
+      bool lessonOnly = false}) {
     final q = query.trim();
     final hasBytes = cards.imageBytes.isNotNull();
     final sel = selectOnly(cards)
@@ -250,6 +265,7 @@ class AppDatabase extends _$AppDatabase {
         cards.imageUrl,
         cards.isCard,
         cards.isFavorite,
+        cards.inLesson,
         hasBytes,
       ])
       ..orderBy([OrderingTerm(expression: cards.english)])
@@ -264,6 +280,7 @@ class AppDatabase extends _$AppDatabase {
       filter = filter & cards.catalogueId.equals(catalogueId);
     }
     if (favoritesOnly) filter = filter & cards.isFavorite.equals(true);
+    if (lessonOnly) filter = filter & cards.inLesson.equals(true);
     sel.where(filter);
 
     return sel
@@ -277,6 +294,7 @@ class AppDatabase extends _$AppDatabase {
               imageUrl: r.read(cards.imageUrl),
               isCard: r.read(cards.isCard) ?? false,
               isFavorite: r.read(cards.isFavorite) ?? false,
+              inLesson: r.read(cards.inLesson) ?? false,
               hasLocalImage: r.read(hasBytes) ?? false,
             ))
         .watch();
@@ -317,6 +335,35 @@ class AppDatabase extends _$AppDatabase {
       ..where(cards.isFavorite.equals(true));
     return q.map((r) => r.read(c) ?? 0).watchSingle();
   }
+
+  // ---------------------------------------------------------------------------
+  // Today's lesson (a hand-picked cram set the user drills to memorize)
+  // ---------------------------------------------------------------------------
+
+  /// Add or remove a card from today's lesson set.
+  Future<void> setInLesson(int id, bool value) =>
+      (update(cards)..where((t) => t.id.equals(id)))
+          .write(CardsCompanion(inLesson: Value(value)));
+
+  /// Live count of cards currently in the lesson (for the chip + the 20 cap).
+  Stream<int> watchLessonCount() {
+    final c = countAll();
+    final q = selectOnly(cards)
+      ..addColumns([c])
+      ..where(cards.inLesson.equals(true));
+    return q.map((r) => r.read(c) ?? 0).watchSingle();
+  }
+
+  /// One-shot current lesson size (used to enforce the cap before adding).
+  Future<int> lessonCount() => _count(cards.inLesson.equals(true));
+
+  /// The full cards in today's lesson (with image bytes), for the drill.
+  Future<List<Flashcard>> lessonCards() =>
+      (select(cards)..where((t) => t.inLesson.equals(true))).get();
+
+  /// Empty the lesson (start a fresh day).
+  Future<int> clearLesson() => (update(cards)..where((t) => t.inLesson.equals(true)))
+      .write(const CardsCompanion(inLesson: Value(false)));
 
   // ---------------------------------------------------------------------------
   // Study queue
@@ -681,6 +728,7 @@ class AppDatabase extends _$AppDatabase {
             'imageUrl': c.imageUrl,
             'imageSource': c.imageSource,
             'isFavorite': c.isFavorite,
+            'inLesson': c.inLesson,
             'isCard': c.isCard,
             'createdAt': c.createdAt.millisecondsSinceEpoch,
             'updatedAt': c.updatedAt.millisecondsSinceEpoch,
@@ -785,6 +833,7 @@ class AppDatabase extends _$AppDatabase {
                 imageUrl: Value(c['imageUrl'] as String?),
                 imageSource: Value(c['imageSource'] as String?),
                 isFavorite: Value(c['isFavorite'] as bool? ?? false),
+                inLesson: Value(c['inLesson'] as bool? ?? false),
                 isCard: Value(c['isCard'] as bool? ?? false),
                 createdAt: Value(ms(c['createdAt'])),
                 updatedAt: Value(ms(c['updatedAt'])),

@@ -53,6 +53,10 @@ class Cards extends Table {
   // "Favourites" filter). Independent of isCard / SRS state.
   BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
 
+  // Whether the card is in the hand-picked "today's lesson" set — a small
+  // cram list (up to ~20) the user drills repeatedly. Independent of SRS.
+  BoolColumn get inLesson => boolean().withDefault(const Constant(false))();
+
   // --- Lifecycle ---
   BoolColumn get isCard => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

@@ -21,9 +21,13 @@ import '../catalogues/catalogue_screen.dart';
 import '../dedup/dedup_screen.dart';
 import '../editor/card_editor_screen.dart';
 import '../image_studio/image_studio_screen.dart';
+import '../lesson/lesson_drill_screen.dart';
 import '../stats/stats_screen.dart';
 import '../study/study_controller.dart';
 import '../sync/sync_screen.dart';
+
+/// Max cards allowed in today's hand-picked lesson (the cram set).
+const int kLessonMax = 20;
 
 class DictionaryScreen extends StatefulWidget {
   final VoidCallback onStudyTap;
@@ -44,6 +48,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   bool _compact = false;
   bool _favoritesOnly = false;
   bool _learnedOnly = false;
+  bool _lessonOnly = false;
   int? _filterCatId;
   final Set<int> _selected = {};
 
@@ -221,11 +226,12 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                 // Lightweight query (no image blobs) so a big deck stays
                 // smooth on mobile; filtering is done in the query.
                 stream: db.searchEntriesLite(_query,
-                    catalogueId: (_favoritesOnly || _learnedOnly)
+                    catalogueId: (_favoritesOnly || _learnedOnly || _lessonOnly)
                         ? null
                         : _filterCatId,
                     favoritesOnly: _favoritesOnly,
-                    learnedOnly: _learnedOnly),
+                    learnedOnly: _learnedOnly,
+                    lessonOnly: _lessonOnly),
                 builder: (context, snap) {
                   final loading =
                       snap.connectionState == ConnectionState.waiting &&
@@ -280,11 +286,13 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                           selectedId: _filterCatId,
                           favoritesSelected: _favoritesOnly,
                           learnedSelected: _learnedOnly,
+                          lessonSelected: _lessonOnly,
                           onSelect: (id) {
                             setState(() {
                               _filterCatId = id;
                               _favoritesOnly = false;
                               _learnedOnly = false;
+                              _lessonOnly = false;
                             });
                             widget.onFilterChanged(id);
                           },
@@ -292,6 +300,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             setState(() {
                               _favoritesOnly = true;
                               _learnedOnly = false;
+                              _lessonOnly = false;
                               _filterCatId = null;
                             });
                             widget.onFilterChanged(null);
@@ -300,11 +309,23 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             setState(() {
                               _learnedOnly = true;
                               _favoritesOnly = false;
+                              _lessonOnly = false;
+                              _filterCatId = null;
+                            });
+                            widget.onFilterChanged(null);
+                          },
+                          onSelectLesson: () {
+                            setState(() {
+                              _lessonOnly = true;
+                              _learnedOnly = false;
+                              _favoritesOnly = false;
                               _filterCatId = null;
                             });
                             widget.onFilterChanged(null);
                           },
                         ),
+                      if (!_selectMode && _lessonOnly)
+                        _LessonActionBar(db: db),
                       Expanded(
                         child: StreamBuilder<List<Catalogue>>(
                           stream: db.watchCatalogues(),
@@ -321,13 +342,16 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                             if (filtered.isEmpty) {
                               final msg = _query.trim().isNotEmpty
                                   ? 'No matching entries.'
-                                  : _learnedOnly
-                                      ? 'Nothing marked as learned yet.'
-                                      : _favoritesOnly
-                                          ? 'No favourites yet — tap the ♥ on an entry.'
-                                          : _filterCatId != null
-                                              ? 'No entries in this category.'
-                                              : 'No entries yet — tap “New entry”.';
+                                  : _lessonOnly
+                                      ? 'Lekcja pusta — stuknij ikonę 🎓 na kartach '
+                                          'z dowolnych zestawów, aby dodać (do 20).'
+                                      : _learnedOnly
+                                          ? 'Nothing marked as learned yet.'
+                                          : _favoritesOnly
+                                              ? 'No favourites yet — tap the ♥ on an entry.'
+                                              : _filterCatId != null
+                                                  ? 'No entries in this category.'
+                                                  : 'No entries yet — tap “New entry”.';
                               return Center(
                                 child: Text(msg,
                                     style: TextStyle(
@@ -378,6 +402,67 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => CardEditorScreen(cardId: cardId)),
     );
+  }
+}
+
+/// Shown under the category bar when the "Lekcja" filter is active: start the
+/// cram drill over the hand-picked cards, or clear the lesson for a new day.
+class _LessonActionBar extends StatelessWidget {
+  final AppDatabase db;
+  const _LessonActionBar({required this.db});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: db.watchLessonCount(),
+      builder: (context, snap) {
+        final n = snap.data ?? 0;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 2, 12, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: n == 0
+                      ? null
+                      : () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const LessonDrillScreen())),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: Text('Ćwicz lekcję ($n/$kLessonMax)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: n == 0 ? null : () => _confirmClear(context),
+                icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                label: const Text('Wyczyść'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmClear(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wyczyścić lekcję?'),
+        content: const Text(
+            'Wszystkie karty zostaną usunięte z lekcji dnia. '
+            'Same fiszki zostają w Twoich zestawach.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Anuluj')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Wyczyść')),
+        ],
+      ),
+    );
+    if (ok == true) await db.clearLesson();
   }
 }
 
@@ -525,17 +610,21 @@ class _CategoryFilterBar extends StatefulWidget {
   final int? selectedId;
   final bool favoritesSelected;
   final bool learnedSelected;
+  final bool lessonSelected;
   final ValueChanged<int?> onSelect;
   final VoidCallback onSelectFavorites;
   final VoidCallback onSelectLearned;
+  final VoidCallback onSelectLesson;
   const _CategoryFilterBar(
       {required this.db,
       required this.selectedId,
       required this.favoritesSelected,
       required this.learnedSelected,
+      required this.lessonSelected,
       required this.onSelect,
       required this.onSelectFavorites,
-      required this.onSelectLearned});
+      required this.onSelectLearned,
+      required this.onSelectLesson});
 
   @override
   State<_CategoryFilterBar> createState() => _CategoryFilterBarState();
@@ -561,6 +650,17 @@ class _CategoryFilterBarState extends State<_CategoryFilterBar> {
       _pill('Learned', widget.learnedSelected,
           () => wrap(widget.onSelectLearned),
           icon: Icons.school_rounded),
+      StreamBuilder<int>(
+        stream: widget.db.watchLessonCount(),
+        builder: (_, s) {
+          final n = s.data ?? 0;
+          return _pill(
+              n > 0 ? 'Lekcja $n' : 'Lekcja',
+              widget.lessonSelected,
+              () => wrap(widget.onSelectLesson),
+              icon: Icons.menu_book_rounded);
+        },
+      ),
       for (final c in sorted)
         _pill(
             c.icon != null && c.icon!.isNotEmpty
@@ -834,6 +934,7 @@ class _EntryRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
+                if (!selectMode) _lessonButton(context, 22),
                 if (!selectMode) _heartButton(context, 24),
                 if (!selectMode) _addButton(context),
               ],
@@ -914,6 +1015,7 @@ class _EntryRow extends StatelessWidget {
                         size: 18, color: AppTheme.muted),
                   ),
                 ),
+                if (!selectMode) _lessonButton(context, 18),
                 if (!selectMode) _heartButton(context, 20),
                 if (!selectMode) _addButtonCompact(context),
               ],
@@ -977,6 +1079,40 @@ class _EntryRow extends StatelessWidget {
       tooltip:
           entry.isFavorite ? 'Remove from favourites' : 'Add to favourites',
       onPressed: () => db.setFavorite(entry.id, !entry.isFavorite),
+    );
+  }
+
+  /// Add / remove this entry from today's lesson (the hand-picked cram set).
+  /// Enforces the [kLessonMax] cap when adding.
+  Widget _lessonButton(BuildContext context, double size) {
+    return IconButton(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      visualDensity: VisualDensity.compact,
+      iconSize: size,
+      icon: Icon(entry.inLesson
+          ? Icons.school_rounded
+          : Icons.school_outlined),
+      color: entry.inLesson ? AppTheme.coral : AppTheme.muted,
+      tooltip: entry.inLesson
+          ? 'Usuń z lekcji dnia'
+          : 'Dodaj do lekcji dnia',
+      onPressed: () async {
+        if (entry.inLesson) {
+          await db.setInLesson(entry.id, false);
+          return;
+        }
+        final n = await db.lessonCount();
+        if (n >= kLessonMax) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Lekcja jest pełna ($kLessonMax). '
+                    'Usuń którąś albo zacznij ćwiczyć.')));
+          }
+          return;
+        }
+        await db.setInLesson(entry.id, true);
+      },
     );
   }
 
