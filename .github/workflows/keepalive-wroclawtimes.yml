@@ -1,0 +1,29 @@
+name: Keep Wrocław Times Supabase awake
+
+# Supabase pauses free-tier projects after ~7 days with no activity. This app
+# is used only occasionally, so a small scheduled request to the database keeps
+# the project active and prevents the auto-pause. Runs every ~2 days (well
+# inside the 7-day window, with margin for GitHub skipping scheduled runs).
+
+on:
+  schedule:
+    - cron: '43 6 */2 * *' # ~every 2 days, offset from the Lexicon ping
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the entries table (counts as project activity)
+        run: |
+          URL="https://jvjybaavhclunnpvvlti.supabase.co"
+          # publishable key (already public in the app config, safe here)
+          KEY="sb_publishable__4euOrVsANemPgdZulmEVg_YSUy7Lz0"
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$URL/rest/v1/entries?select=updated_at&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          echo "Supabase REST responded: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "Unexpected status; project may be down."
+            exit 1
+          fi
