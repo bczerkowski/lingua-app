@@ -16,6 +16,7 @@ import '../../services/import_export/list_image.dart';
 import '../../widgets/card_image.dart';
 import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
+import '../../services/sync/supabase_config.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../dedup/dedup_screen.dart';
@@ -1327,6 +1328,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
         if (v == 'recover_images') _recoverImages(context);
+        if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1449,6 +1451,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.restore_rounded),
             title: Text('Recover images from cloud'),
             subtitle: Text('Re-link photos still in Storage to their cards'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'repair_image_links',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.link_off_rounded),
+            title: Text('Napraw linki do obrazów'),
+            subtitle: Text('Usuwa martwe linki do starego projektu'),
           ),
         ),
         PopupMenuItem(
@@ -1822,6 +1833,27 @@ class _ManageMenu extends StatelessWidget {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Recovery failed: $e')));
+    }
+  }
+
+  /// Clear dead image links that point to a deleted old Supabase project, so
+  /// each card falls back to its local copy (if any) and can be re-uploaded to
+  /// the current Storage.
+  Future<void> _repairImageLinks(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final host = Uri.parse(SupabaseConfig.url).host;
+    try {
+      final n = await db.unlinkStaleImageUrls(host);
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 9),
+        content: Text(n == 0
+            ? 'Brak nieaktualnych linków — nic do naprawy.'
+            : 'Naprawiono $n linków. Obrazki z lokalną kopią znów się '
+                'pokażą. Uruchom teraz „Sync images to cloud”, aby wgrać je '
+                'do nowej chmury.'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Naprawa nie powiodła się: $e')));
     }
   }
 

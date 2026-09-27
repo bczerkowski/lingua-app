@@ -541,6 +541,22 @@ class AppDatabase extends _$AppDatabase {
         ..where((t) => t.imageBytes.isNotNull() & t.imageUrl.isNull()))
       .get();
 
+  /// How many cards still carry an imageUrl that does NOT belong to
+  /// [currentHost] (e.g. a link to a deleted old Supabase project).
+  Future<int> countStaleImageUrls(String currentHost) => _count(
+      cards.imageUrl.isNotNull() &
+          cards.imageUrl.like('%$currentHost%').not());
+
+  /// Clear image URLs pointing to a host other than [currentHost] — dead links
+  /// to a deleted project. The card's local imageBytes (if any) then become the
+  /// image again and can be re-uploaded to the current Storage. Returns how many
+  /// links were cleared.
+  Future<int> unlinkStaleImageUrls(String currentHost) => (update(cards)
+        ..where((t) =>
+            t.imageUrl.isNotNull() &
+            t.imageUrl.like('%$currentHost%').not()))
+      .write(const CardsCompanion(imageUrl: Value(null)));
+
   /// Entries that still have no image (neither local bytes nor a Storage URL),
   /// oldest first — the work queue for the batch image studio.
   Future<List<Flashcard>> cardsWithoutImage({int? catalogueId}) {
