@@ -557,6 +557,65 @@ class AppDatabase extends _$AppDatabase {
             t.imageUrl.like('%$currentHost%').not()))
       .write(const CardsCompanion(imageUrl: Value(null)));
 
+  /// Restore images into the CURRENT deck from a backup/export JSON, WITHOUT
+  /// touching anything else. For each backup card that carries an image, the
+  /// matching current card (by id, else by English headword) gets that image —
+  /// but only if it currently has none, so existing pictures are never
+  /// overwritten. Embedded bytes are used directly; a backup URL is only taken
+  /// when it belongs to [currentHost] (a foreign/old URL is dead, so skipped).
+  /// Returns how many cards had an image restored.
+  Future<int> importImagesFromBackup(String jsonStr, String currentHost) async {
+    final dynamic parsed = jsonDecode(jsonStr);
+    if (parsed is! Map<String, dynamic> || parsed['app'] != 'lexicon') {
+      throw const FormatException('This file is not a Lexicon backup.');
+    }
+    final list =
+        (parsed['cards'] as List? ?? const []).cast<Map<String, dynamic>>();
+
+    final current = await select(cards).get();
+    final byId = {for (final c in current) c.id: c};
+    final byEng = <String, Flashcard>{};
+    for (final c in current) {
+      byEng.putIfAbsent(c.english.toLowerCase().trim(), () => c);
+    }
+
+    var restored = 0;
+    await batch((b) {
+      for (final m in list) {
+        final bytesB64 = m['imageBytes'] as String?;
+        final url = m['imageUrl'] as String?;
+        final hasBytes = bytesB64 != null && bytesB64.isNotEmpty;
+        final usableUrl =
+            url != null && url.isNotEmpty && url.contains(currentHost);
+        if (!hasBytes && !usableUrl) continue;
+
+        Flashcard? target = byId[m['id']];
+        if (target == null) {
+          final eng = (m['english'] as String?)?.toLowerCase().trim();
+          if (eng != null) target = byEng[eng];
+        }
+        if (target == null) continue;
+
+        final already = target.imageBytes != null ||
+            (target.imageUrl != null && target.imageUrl!.isNotEmpty);
+        if (already) continue; // never overwrite an existing image
+
+        if (hasBytes) {
+          b.update(cards,
+              CardsCompanion(
+                  imageBytes: Value(base64Decode(bytesB64)),
+                  imageSource: const Value('restored')),
+              where: (t) => t.id.equals(target!.id));
+        } else {
+          b.update(cards, CardsCompanion(imageUrl: Value(url)),
+              where: (t) => t.id.equals(target!.id));
+        }
+        restored++;
+      }
+    });
+    return restored;
+  }
+
   /// Entries that still have no image (neither local bytes nor a Storage URL),
   /// oldest first — the work queue for the batch image studio.
   Future<List<Flashcard>> cardsWithoutImage({int? catalogueId}) {

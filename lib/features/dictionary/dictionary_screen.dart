@@ -1329,6 +1329,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'migrate_images') _migrateImages(context);
         if (v == 'recover_images') _recoverImages(context);
         if (v == 'repair_image_links') _repairImageLinks(context);
+        if (v == 'import_images') _importImages(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1460,6 +1461,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.link_off_rounded),
             title: Text('Napraw linki do obrazów'),
             subtitle: Text('Usuwa martwe linki do starego projektu'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'import_images',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.image_outlined),
+            title: Text('Importuj obrazy z backupu'),
+            subtitle: Text('Dokłada obrazy z pliku JSON do pasujących kart'),
           ),
         ),
         PopupMenuItem(
@@ -1854,6 +1864,38 @@ class _ManageMenu extends StatelessWidget {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Naprawa nie powiodła się: $e')));
+    }
+  }
+
+  /// Merge ONLY the images from a backup/export JSON into the current deck,
+  /// filling cards that have no image. Leaves everything else untouched — used
+  /// to recover pictures from an older backup or from another device's export.
+  Future<void> _importImages(BuildContext context) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final bytes = picked.files.single.bytes;
+    if (bytes == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Wczytuję obrazy z backupu…')),
+    );
+    try {
+      final host = Uri.parse(SupabaseConfig.url).host;
+      final n = await db.importImagesFromBackup(utf8.decode(bytes), host);
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 9),
+        content: Text(n == 0
+            ? 'Nie znalazłem nowych obrazów do dołożenia (albo karty już je '
+                'mają, albo backup ich nie zawiera).'
+            : 'Przywrócono $n obrazów. Uruchom „Sync images to cloud”, aby '
+                'zapisać je też w chmurze.'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Import obrazów nie powiódł się: $e')));
     }
   }
 
