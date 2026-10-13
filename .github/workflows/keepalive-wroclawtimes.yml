@@ -1,29 +1,58 @@
 name: Keep Wrocław Times Supabase awake
 
-# Supabase pauses free-tier projects after ~7 days with no activity. This app
-# is used only occasionally, so a small scheduled request to the database keeps
-# the project active and prevents the auto-pause. Runs every ~2 days (well
-# inside the 7-day window, with margin for GitHub skipping scheduled runs).
+# Supabase pauses free-tier projects that show "low activity" over 7 days.
+# The first version of this job (one tiny query every 2 days) ran green every
+# time, yet Supabase still warned that the project was about to be paused —
+# so this version is both more frequent (every 6 h) and broader: each run sends
+# several requests that touch the database (REST), Auth and Storage.
+# No guarantee from Supabase on the exact threshold; the only documented
+# guarantee is the Pro plan.
 
 on:
   schedule:
-    - cron: '43 6 */2 * *' # ~every 2 days, offset from the Lexicon ping
+    - cron: '43 */6 * * *' # 4x a day, offset from the Lexicon ping
   workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Query the entries table (counts as project activity)
+      - name: Exercise REST, Auth and Storage (counts as project activity)
         run: |
           URL="https://jvjybaavhclunnpvvlti.supabase.co"
           # publishable key (already public in the app config, safe here)
           KEY="sb_publishable__4euOrVsANemPgdZulmEVg_YSUy7Lz0"
-          code=$(curl -s -o /dev/null -w "%{http_code}" \
-            "$URL/rest/v1/entries?select=updated_at&limit=1" \
-            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
-          echo "Supabase REST responded: HTTP $code"
-          if [ "$code" != "200" ]; then
-            echo "Unexpected status; project may be down."
+          fail=0
+
+          # Prints "<label> -> HTTP <code>" and flags any non-2xx response.
+          check() {
+            echo "$1 -> HTTP $2"
+            case "$2" in 2??) ;; *) fail=1 ;; esac
+          }
+
+          for i in 1 2 3; do
+            code=$(curl -s -m 20 -o /dev/null -w "%{http_code}" \
+              "$URL/rest/v1/entries?select=id,updated_at&order=updated_at.desc&limit=5" \
+              -H "apikey: $KEY" || true)
+            check "REST select #$i" "$code"
+          done
+
+          code=$(curl -s -m 20 -o /dev/null -w "%{http_code}" \
+            "$URL/rest/v1/entries?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Prefer: count=exact" || true)
+          check "REST count" "$code"
+
+          code=$(curl -s -m 20 -o /dev/null -w "%{http_code}" \
+            "$URL/auth/v1/settings" -H "apikey: $KEY" || true)
+          check "Auth settings" "$code"
+
+          code=$(curl -s -m 20 -o /dev/null -w "%{http_code}" -X POST \
+            "$URL/storage/v1/object/list/journal-images" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":1}' || true)
+          check "Storage list" "$code"
+
+          if [ "$fail" != "0" ]; then
+            echo "At least one request failed; project may be paused or down."
             exit 1
           fi
