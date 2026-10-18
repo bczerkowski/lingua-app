@@ -14,17 +14,24 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Query the decks table (counts as project activity)
+      # A read that RLS answers with [] was NOT enough: Supabase still flagged
+      # the project as inactive (2026-10-18). So each run writes a real row to a
+      # tiny `keepalive` table (see supabase/keepalive.sql) and reads it back.
+      - name: Write + read the keepalive row (counts as project activity)
         run: |
           URL="https://alfitpzqcpwpktjgclhj.supabase.co"
           # anon public key (already public in the app config, safe here)
           KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZml0cHpxY3B3cGt0amdjbGhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMTgwMTIsImV4cCI6MjEwNDU5NDAxMn0.6XYZ-JmZIgdcDXOJPBPhyY-abJKeKUlQIozgMPbZLNk"
-          code=$(curl -s -o /dev/null -w "%{http_code}" \
-            "$URL/rest/v1/decks?select=updated_at&limit=1" \
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "$URL/rest/v1/keepalive?on_conflict=id" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d "{\"id\":1,\"pinged_at\":\"$NOW\"}")
+          echo "Upsert keepalive: HTTP $code"
+          case "$code" in 200|201|204) ;; *) echo "Write failed; project may be down."; exit 1;; esac
+          body=$(curl -s "$URL/rest/v1/keepalive?select=pinged_at&id=eq.1" \
             -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
-          echo "Supabase REST responded: HTTP $code"
-          # 200 (RLS returns []) means the database answered -> activity logged.
-          if [ "$code" != "200" ]; then
-            echo "Unexpected status; project may be down."
-            exit 1
-          fi
+          echo "Read back: $body"
+          echo "$body" | grep -q "pinged_at" || { echo "Read-back failed."; exit 1; }
