@@ -1,13 +1,14 @@
 name: Keep Supabase awake
 
 # Supabase pauses free-tier projects after ~7 days with no activity. This app
-# is used only occasionally, so a small scheduled request to the database keeps
-# the project active and prevents the auto-pause. Runs every ~2 days (well
-# inside the 7-day window, with margin for GitHub skipping scheduled runs).
+# is used only occasionally, so a small scheduled write to the database keeps
+# the project active. Runs DAILY: Supabase still sent pre-pause warnings on the
+# every-2-days cadence (2026-10-25), so we leave the widest possible margin and
+# generate activity every day (GitHub may still skip some scheduled runs).
 
 on:
   schedule:
-    - cron: '17 6 */2 * *' # ~every 2 days, off the top of the hour
+    - cron: '17 6 * * *' # daily, off the top of the hour
   workflow_dispatch: {}
 
 jobs:
