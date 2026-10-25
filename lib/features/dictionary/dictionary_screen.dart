@@ -53,6 +53,11 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   int? _filterCatId;
   final Set<int> _selected = {};
 
+  // Gentle "make a backup" reminder, shown when it's been a while since the
+  // last export (so the cloud is never the only copy of the deck).
+  bool _reminderChecked = false;
+  bool _showBackupReminder = false;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +77,59 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
     await p.setBool('pref_alpha', _alphabetical);
     await p.setBool('pref_group', _groupByCategory);
     await p.setBool('pref_compact', _compact);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // AppServices (InheritedWidget) isn't available in initState.
+    if (!_reminderChecked) {
+      _reminderChecked = true;
+      _checkBackupReminder();
+    }
+  }
+
+  static const int _kBackupEveryMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  /// Show the backup banner if it's been a week since the last export (and the
+  /// deck is big enough to be worth protecting) and the user hasn't snoozed it.
+  Future<void> _checkBackupReminder() async {
+    final p = await SharedPreferences.getInstance();
+    final last = p.getInt('last_backup_at');
+    final snooze = p.getInt('backup_snooze_until') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final due = (last == null || now - last >= _kBackupEveryMs) && now >= snooze;
+    if (!due || !mounted) return;
+    final n = await AppServices.of(context).db.countCards();
+    if (n < 20) return; // don't nag an empty / tiny deck
+    if (mounted) setState(() => _showBackupReminder = true);
+  }
+
+  /// Export the whole deck (JSON, images included) and record the backup time.
+  Future<void> _backupNow() async {
+    final db = AppServices.of(context).db;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final json = await db.exportDeck();
+      final stamp = DateTime.now().toIso8601String().split('T').first;
+      downloadText('lexicon-backup-$stamp.json', json,
+          mime: 'application/json');
+      final p = await SharedPreferences.getInstance();
+      await p.setInt('last_backup_at', DateTime.now().millisecondsSinceEpoch);
+      if (mounted) setState(() => _showBackupReminder = false);
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Kopia pobrana — trzymaj ją poza aplikacją '
+              '(Dysk/pendrive).')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Backup nie powiódł się: $e')));
+    }
+  }
+
+  Future<void> _snoozeBackup() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setInt('backup_snooze_until',
+        DateTime.now().add(const Duration(days: 2)).millisecondsSinceEpoch);
+    if (mounted) setState(() => _showBackupReminder = false);
   }
 
   void _enterSelect([int? first]) {
@@ -211,6 +269,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                 db: db,
                 onStudyTap: widget.onStudyTap,
                 catalogueId: _filterCatId),
+            if (_showBackupReminder) _backupReminderBanner(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
               child: TextField(
@@ -395,6 +454,38 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _backupReminderBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: AppTheme.sand,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.coral.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.backup_outlined, color: AppTheme.coralDark, size: 22),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Dawno nie było kopii zapasowej. Zrób backup, żeby chmura nie '
+              'była jedyną kopią Twoich fiszek.',
+              style: TextStyle(fontSize: 13, height: 1.3),
+            ),
+          ),
+          TextButton(onPressed: _snoozeBackup, child: const Text('Później')),
+          FilledButton(
+            onPressed: _backupNow,
+            style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact),
+            child: const Text('Zrób backup'),
+          ),
+        ],
       ),
     );
   }
@@ -1727,6 +1818,8 @@ class _ManageMenu extends StatelessWidget {
       final stamp = DateTime.now().toIso8601String().split('T').first;
       downloadText('lexicon-backup-$stamp.json', json,
           mime: 'application/json');
+      final p = await SharedPreferences.getInstance();
+      await p.setInt('last_backup_at', DateTime.now().millisecondsSinceEpoch);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
