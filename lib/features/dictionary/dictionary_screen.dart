@@ -1423,6 +1423,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_images') _importImages(context);
         if (v == 'storage_diag') _storageDiag(context);
+        if (v == 'export_images_chunked') _exportImagesChunked(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1563,6 +1564,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.image_outlined),
             title: Text('Importuj obrazy z backupu'),
             subtitle: Text('Dokłada obrazy z pliku JSON do pasujących kart'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'export_images_chunked',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.save_alt_rounded),
+            title: Text('Backup obrazów w częściach'),
+            subtitle: Text('Pobiera obrazy w kilku plikach (gdy backup za duży)'),
           ),
         ),
         PopupMenuItem(
@@ -2000,6 +2010,47 @@ class _ManageMenu extends StatelessWidget {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import obrazów nie powiódł się: $e')));
+    }
+  }
+
+  /// Export every image in small downloadable chunks. The normal one-file
+  /// backup can be too large to build when the deck holds a lot of images;
+  /// this splits it into several JSON files that each stay well within browser
+  /// limits (restore them later with "Importuj obrazy z backupu").
+  Future<void> _exportImagesChunked(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ids = await db.cardIdsWithImage();
+    if (ids.isEmpty) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Brak obrazów do eksportu.')));
+      return;
+    }
+    const chunk = 200;
+    final total = (ids.length / chunk).ceil();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 6),
+      content: Text('Eksportuję $total ${total == 1 ? "plik" : "plików"} '
+          'z ${ids.length} obrazami. Jeśli przeglądarka zapyta — pozwól na '
+          'pobieranie wielu plików.'),
+    ));
+    try {
+      for (var k = 0; k < total; k++) {
+        final end = ((k + 1) * chunk).clamp(0, ids.length);
+        final slice = ids.sublist(k * chunk, end);
+        final json = await db.exportImageChunk(slice);
+        downloadText('lexicon-images-part${k + 1}-of-$total.json', json,
+            mime: 'application/json');
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+      final p = await SharedPreferences.getInstance();
+      await p.setInt('last_backup_at', DateTime.now().millisecondsSinceEpoch);
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text('Gotowe — w Downloads masz $total plików '
+            'lexicon-images-part*.json. Trzymaj je razem (to Twój backup).'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Eksport przerwany: $e')));
     }
   }
 

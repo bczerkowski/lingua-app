@@ -761,6 +761,42 @@ class AppDatabase extends _$AppDatabase {
   // deck between devices (e.g. computer -> phone) and as a full backup.
   // ---------------------------------------------------------------------------
 
+  /// Ids of every card that currently holds an image (local bytes or a URL),
+  /// ordered — used to export a big image set in downloadable chunks.
+  Future<List<int>> cardIdsWithImage() async {
+    final rows = await (selectOnly(cards)
+          ..addColumns([cards.id])
+          ..where(cards.imageBytes.isNotNull() | cards.imageUrl.isNotNull())
+          ..orderBy([OrderingTerm(expression: cards.id)]))
+        .get();
+    return rows.map((r) => r.read(cards.id)!).toList();
+  }
+
+  /// A small, importable JSON for just the given cards' images. Unlike
+  /// [exportDeck], this ALWAYS embeds the real base64 bytes when present (so the
+  /// chunk is a true on-disk backup, not just a link). Importable with
+  /// [importImagesFromBackup].
+  Future<String> exportImageChunk(List<int> ids) async {
+    final rows = await (select(cards)..where((t) => t.id.isIn(ids))).get();
+    final doc = {
+      'app': 'lexicon',
+      'version': 1,
+      'part': true,
+      'cards': [
+        for (final c in rows)
+          {
+            'id': c.id,
+            'english': c.english,
+            'polish': c.polish,
+            'imageBytes':
+                c.imageBytes == null ? null : base64Encode(c.imageBytes!),
+            'imageUrl': c.imageUrl,
+          }
+      ],
+    };
+    return jsonEncode(doc);
+  }
+
   /// Serialize every catalogue, card (images included, base64-encoded) and
   /// extra meaning into a single JSON string.
   Future<String> exportDeck() async {
