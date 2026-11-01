@@ -1426,6 +1426,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'storage_diag') _storageDiag(context);
         if (v == 'export_images_chunked') _exportImagesChunked(context);
         if (v == 'recompress_images') _recompressImages(context);
+        if (v == 'vacuum') _vacuum(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1584,6 +1585,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.compress_rounded),
             title: Text('Odchudź obrazy (napraw zapis)'),
             subtitle: Text('Zmniejsza obrazy, by baza znów przyjmowała zapisy'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'vacuum',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cleaning_services_outlined),
+            title: Text('Zwolnij miejsce (VACUUM)'),
+            subtitle: Text('Oddaje puste miejsce po odchudzeniu'),
           ),
         ),
         PopupMenuItem(
@@ -2024,6 +2034,22 @@ class _ManageMenu extends StatelessWidget {
     }
   }
 
+  /// Reclaim free space (VACUUM) so the DB file and reported usage shrink after
+  /// images have been recompressed/cleared.
+  Future<void> _vacuum(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Zwalniam miejsce (VACUUM) — chwila, nie zamykaj…')));
+    try {
+      await db.vacuum();
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Gotowe. Sprawdź Diagnostykę — zużycie powinno '
+              'spaść.')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('VACUUM nie powiódł się: $e')));
+    }
+  }
+
   /// Recompress every local image down to a small JPEG so the database shrinks
   /// and starts accepting new image writes again. The full-size originals are
   /// in the chunked backup, so quality loss here is safe/reversible.
@@ -2067,12 +2093,20 @@ class _ManageMenu extends StatelessWidget {
       }
     }
     final savedMb = ((before - after) / 1048576).toStringAsFixed(0);
+    // Reclaim the freed space so the file (and quota usage) actually shrinks —
+    // without this, SQLite keeps the emptied pages and usage stays high.
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Zwalniam miejsce (VACUUM) — chwila, nie zamykaj…')));
+    try {
+      await db.vacuum();
+    } catch (_) {/* best effort */}
     if (!context.mounted) return;
     messenger.showSnackBar(SnackBar(
-      duration: const Duration(seconds: 12),
+      duration: const Duration(seconds: 14),
       content: Text('Gotowe: odchudzono $done '
-          '${fail > 0 ? "($fail pominięto) " : ""}obrazów, zwolniono '
-          '~$savedMb MB. Nowe obrazy znów powinny się zapisywać.'),
+          '${fail > 0 ? "($fail pominięto) " : ""}obrazów, zmniejszono dane '
+          'o ~$savedMb MB. Sprawdź Diagnostykę — zużycie powinno spaść. '
+          'Nowe obrazy znów powinny się zapisywać.'),
     ));
   }
 

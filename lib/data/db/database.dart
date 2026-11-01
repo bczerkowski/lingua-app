@@ -772,6 +772,11 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(cards.id)!).toList();
   }
 
+  /// Reclaim free pages left after shrinking/clearing large blobs, so the DB
+  /// file (and the browser's reported storage usage) actually gets smaller.
+  /// SQLite keeps freed space inside the file until this runs.
+  Future<void> vacuum() => customStatement('VACUUM');
+
   /// Ids of cards holding a LOCAL image blob (imageBytes), ordered — the work
   /// list for recompressing big images down to a small size.
   Future<List<int>> cardIdsWithLocalImage() async {
