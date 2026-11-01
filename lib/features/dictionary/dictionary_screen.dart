@@ -17,6 +17,7 @@ import '../../widgets/card_image.dart';
 import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
 import '../../services/sync/supabase_config.dart';
+import '../../services/util/storage_estimate.dart';
 import '../../theme.dart';
 import '../catalogues/catalogue_screen.dart';
 import '../dedup/dedup_screen.dart';
@@ -1421,6 +1422,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'recover_images') _recoverImages(context);
         if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_images') _importImages(context);
+        if (v == 'storage_diag') _storageDiag(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1561,6 +1563,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.image_outlined),
             title: Text('Importuj obrazy z backupu'),
             subtitle: Text('Dokłada obrazy z pliku JSON do pasujących kart'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'storage_diag',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.memory_rounded),
+            title: Text('Diagnostyka pamięci'),
+            subtitle: Text('Ile miejsca zajmuje baza i czy jest trwała'),
           ),
         ),
         PopupMenuItem(
@@ -1990,6 +2001,58 @@ class _ManageMenu extends StatelessWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import obrazów nie powiódł się: $e')));
     }
+  }
+
+  /// Show browser storage usage vs quota + whether storage is persistent — the
+  /// key signal for "new images stopped saving because the DB hit the quota".
+  Future<void> _storageDiag(BuildContext context) async {
+    final db = AppServices.of(context).db;
+    final info = await storageEstimate();
+    final withImg = await db.countCardsWithImage();
+    final total = await db.countCards();
+    if (!context.mounted) return;
+    String mb(int b) => (b / 1048576).toStringAsFixed(1);
+    final pct = info.quotaBytes > 0
+        ? (info.usageBytes / info.quotaBytes * 100).toStringAsFixed(0)
+        : '?';
+    final nearLimit =
+        info.quotaBytes > 0 && info.usageBytes > info.quotaBytes * 0.85;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Diagnostyka pamięci'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Zużycie: ${mb(info.usageBytes)} MB / ${mb(info.quotaBytes)} '
+                'MB  ($pct%)'),
+            const SizedBox(height: 6),
+            Text('Pamięć trwała (persisted): '
+                '${info.persisted ? "TAK" : "NIE"}'),
+            const SizedBox(height: 6),
+            Text('Fiszki z obrazem: $withImg / $total'),
+            if (!info.persisted) ...[
+              const SizedBox(height: 12),
+              const Text(
+                  '⚠️ Pamięć NIE jest trwała — przeglądarka może usuwać dane '
+                  'i odrzucać nowe zapisy. To główne ryzyko utraty.',
+                  style: TextStyle(color: Color(0xFFB3261E))),
+            ],
+            if (nearLimit) ...[
+              const SizedBox(height: 12),
+              const Text(
+                  '⚠️ Blisko limitu — nowe obrazy mogą się już nie zapisywać.',
+                  style: TextStyle(color: Color(0xFFB3261E))),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+        ],
+      ),
+    );
   }
 
   /// Restore the whole deck from a backup file made by [_exportDeck].
