@@ -13,6 +13,7 @@ import '../../services/import_export/csv_export.dart';
 import '../../services/import_export/csv_import.dart';
 import '../../services/import_export/download.dart';
 import '../../services/import_export/list_image.dart';
+import '../../services/media/compress_image.dart';
 import '../../widgets/card_image.dart';
 import '../settings/ai_image_settings.dart';
 import '../../services/sync/sync_service.dart';
@@ -1424,6 +1425,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'import_images') _importImages(context);
         if (v == 'storage_diag') _storageDiag(context);
         if (v == 'export_images_chunked') _exportImagesChunked(context);
+        if (v == 'recompress_images') _recompressImages(context);
         if (v == 'import_deck') _importDeck(context);
         if (v == 'import') _importCsv(context);
         if (v == 'template') _downloadTemplate(context);
@@ -1573,6 +1575,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.save_alt_rounded),
             title: Text('Backup obrazów w częściach'),
             subtitle: Text('Pobiera obrazy w kilku plikach (gdy backup za duży)'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'recompress_images',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.compress_rounded),
+            title: Text('Odchudź obrazy (napraw zapis)'),
+            subtitle: Text('Zmniejsza obrazy, by baza znów przyjmowała zapisy'),
           ),
         ),
         PopupMenuItem(
@@ -2011,6 +2022,58 @@ class _ManageMenu extends StatelessWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import obrazów nie powiódł się: $e')));
     }
+  }
+
+  /// Recompress every local image down to a small JPEG so the database shrinks
+  /// and starts accepting new image writes again. The full-size originals are
+  /// in the chunked backup, so quality loss here is safe/reversible.
+  Future<void> _recompressImages(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ids = await db.cardIdsWithLocalImage();
+    if (ids.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Brak lokalnych obrazów do odchudzenia.')));
+      return;
+    }
+    if (!context.mounted) return;
+    final ok = await _confirm(
+      context,
+      'Odchudzić ${ids.length} obrazów?',
+      'Zmniejszę każdy obraz do ~512 px / JPEG, żeby baza przestała blokować '
+          'zapis nowych. Masz już backup w częściach, więc pełne oryginały są '
+          'bezpieczne. To potrwa 1–2 minuty — nie zamykaj karty.',
+    );
+    if (ok != true) return;
+    messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text('Odchudzam ${ids.length} obrazów… zostaw apkę otwartą.')));
+    var done = 0, fail = 0, before = 0, after = 0;
+    for (final id in ids) {
+      try {
+        final list = await db.getCards([id]);
+        if (list.isEmpty) continue;
+        final c = list.first;
+        final bytes = c.imageBytes;
+        if (bytes == null) continue;
+        final small = await compressImage(bytes, maxDim: 512, quality: 0.6);
+        before += bytes.lengthInBytes;
+        after += small.lengthInBytes;
+        if (small.lengthInBytes < bytes.lengthInBytes) {
+          await db.setImage(id, small, c.imageSource);
+        }
+        done++;
+      } catch (_) {
+        fail++;
+      }
+    }
+    final savedMb = ((before - after) / 1048576).toStringAsFixed(0);
+    if (!context.mounted) return;
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 12),
+      content: Text('Gotowe: odchudzono $done '
+          '${fail > 0 ? "($fail pominięto) " : ""}obrazów, zwolniono '
+          '~$savedMb MB. Nowe obrazy znów powinny się zapisywać.'),
+    ));
   }
 
   /// Export every image in small downloadable chunks. The normal one-file

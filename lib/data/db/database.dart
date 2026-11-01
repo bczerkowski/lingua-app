@@ -772,6 +772,17 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(cards.id)!).toList();
   }
 
+  /// Ids of cards holding a LOCAL image blob (imageBytes), ordered — the work
+  /// list for recompressing big images down to a small size.
+  Future<List<int>> cardIdsWithLocalImage() async {
+    final rows = await (selectOnly(cards)
+          ..addColumns([cards.id])
+          ..where(cards.imageBytes.isNotNull())
+          ..orderBy([OrderingTerm(expression: cards.id)]))
+        .get();
+    return rows.map((r) => r.read(cards.id)!).toList();
+  }
+
   /// A small, importable JSON for just the given cards' images. Unlike
   /// [exportDeck], this ALWAYS embeds the real base64 bytes when present (so the
   /// chunk is a true on-disk backup, not just a link). Importable with

@@ -1,11 +1,10 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_services.dart';
 import '../../data/db/database.dart';
 import '../../services/ai/prompt_builder.dart';
+import '../../services/media/compress_image.dart';
 import '../../services/media/image_import_service.dart';
 import '../../services/util/open_url.dart';
 import '../../theme.dart';
@@ -128,7 +127,7 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
       setState(() => _error = res.error);
       return;
     }
-    final capped = await _capImage(res.bytes!);
+    final capped = await compressImage(res.bytes!, maxDim: 512, quality: 0.6);
     if (!mounted) return;
     setState(() {
       _pending = capped;
@@ -238,7 +237,7 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
       setState(() => _error = res.error);
       return;
     }
-    final capped = await _capImage(res.bytes!);
+    final capped = await compressImage(res.bytes!, maxDim: 512, quality: 0.6);
     if (!mounted || slot >= _slots.length) return;
     setState(() {
       _slots[slot] = capped;
@@ -686,33 +685,6 @@ class _ImageStudioScreenState extends State<ImageStudioScreen> {
       );
     }
     return DottedPasteZone(onPaste: _paste, onPickFile: _pickFile);
-  }
-
-  /// Downscale/cap a pasted image so the deck stays small (mirrors the editor).
-  Future<Uint8List> _capImage(Uint8List input,
-      {int maxDim = 1024, int maxBytes = 700 * 1024}) async {
-    try {
-      final codec = await ui.instantiateImageCodec(input);
-      final frame = await codec.getNextFrame();
-      final img = frame.image;
-      final longest = img.width > img.height ? img.width : img.height;
-      if (longest <= maxDim && input.lengthInBytes <= maxBytes) {
-        img.dispose();
-        return input;
-      }
-      final scale = maxDim / longest;
-      final tw = (img.width * scale).round().clamp(1, maxDim);
-      final th = (img.height * scale).round().clamp(1, maxDim);
-      img.dispose();
-      final scaledCodec = await ui.instantiateImageCodec(input,
-          targetWidth: tw, targetHeight: th);
-      final scaled = (await scaledCodec.getNextFrame()).image;
-      final data = await scaled.toByteData(format: ui.ImageByteFormat.png);
-      scaled.dispose();
-      return data?.buffer.asUint8List() ?? input;
-    } catch (_) {
-      return input;
-    }
   }
 }
 
