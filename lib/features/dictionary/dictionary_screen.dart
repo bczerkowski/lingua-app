@@ -1420,6 +1420,7 @@ class _ManageMenu extends StatelessWidget {
         }
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
+        if (v == 'offload_images') _offloadImages(context);
         if (v == 'recover_images') _recoverImages(context);
         if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_images') _importImages(context);
@@ -1585,6 +1586,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.compress_rounded),
             title: Text('Odchudź obrazy (napraw zapis)'),
             subtitle: Text('Zmniejsza obrazy, by baza znów przyjmowała zapisy'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'offload_images',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_upload_outlined),
+            title: Text('Przenieś obrazy do chmury (odchudź)'),
+            subtitle: Text('Kopia w chmurze + drugie urządzenie, baza chudnie'),
           ),
         ),
         PopupMenuItem(
@@ -1950,6 +1960,68 @@ class _ManageMenu extends StatelessWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));
     }
+  }
+
+  /// Move every local image to Storage and drop the local bytes, shrinking the
+  /// database (images then load from the cloud) and giving a cloud + cross-device
+  /// copy. Shows a live progress dialog since it covers the whole deck.
+  Future<void> _offloadImages(BuildContext context) async {
+    final sync = AppServices.of(context).sync;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!sync.signedIn) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Zaloguj się do Cloud sync (⋮ → Cloud sync).')));
+      return;
+    }
+    final ok = await _confirm(
+      context,
+      'Przenieść obrazy do chmury?',
+      'Wyślę wszystkie obrazy do chmury i usunę ich lokalne kopie, żeby baza '
+          'schudła. Obrazy będą się wtedy wczytywać z chmury (potrzebny '
+          'internet; przeglądarka je zapamiętuje). Masz backup na dysku, więc '
+          'to bezpieczne. Potrwa kilka minut — nie zamykaj karty.',
+    );
+    if (ok != true || !context.mounted) return;
+
+    final progress = ValueNotifier<List<int>>(const [0, 0]);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Przenoszę obrazy do chmury…'),
+        content: ValueListenableBuilder<List<int>>(
+          valueListenable: progress,
+          builder: (_, v, __) {
+            final done = v[0], total = v[1];
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                    value: total == 0 ? null : done / total),
+                const SizedBox(height: 14),
+                Text(total == 0 ? 'Przygotowuję…' : '$done / $total'),
+                const SizedBox(height: 6),
+                const Text('Nie zamykaj karty.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.muted)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    final r = await sync.offloadImagesToStorage(
+        onProgress: (d, t) => progress.value = [d, t]);
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    progress.dispose();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 12),
+      content: Text(r.cleared == 0 && r.error != null
+          ? 'Nie udało się: ${r.error}'
+          : 'Gotowe: wysłano ${r.uploaded}, przeniesiono ${r.cleared}'
+              '${r.failed > 0 ? " (${r.failed} pominięto)" : ""}. '
+              'Sprawdź Diagnostykę — zużycie powinno mocno spaść.'),
+    ));
   }
 
   /// Recover images that are still in Storage but lost their link on the deck

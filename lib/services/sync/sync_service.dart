@@ -426,6 +426,61 @@ class SyncService extends ChangeNotifier {
     return (uploaded: uploaded, failed: failed, error: sampleError);
   }
 
+  /// Move every local image to Storage AND drop the local bytes, so the local
+  /// database shrinks (images then load from their Storage URL). Each card is
+  /// handled on its own (low memory, resumable): upload -> set URL -> clear
+  /// bytes; the bytes are cleared only after a successful upload, so a failure
+  /// never loses an image. Ends with a VACUUM to reclaim the freed space and a
+  /// deck push. Returns (uploaded, cleared, failed) counts.
+  Future<({int uploaded, int cleared, int failed, String? error})>
+      offloadImagesToStorage(
+          {void Function(int done, int total)? onProgress}) async {
+    if (!signedIn) {
+      return (uploaded: 0, cleared: 0, failed: 0, error: 'not signed in');
+    }
+    final host = Uri.parse(SupabaseConfig.url).host;
+    final ids = await db.cardIdsWithLocalImage();
+    var uploaded = 0, cleared = 0, failed = 0;
+    String? sampleError;
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        final list = await db.getCards([ids[i]]);
+        if (list.isEmpty) continue;
+        final c = list.first;
+        final bytes = c.imageBytes;
+        if (bytes == null) continue;
+        final current = c.imageUrl;
+        final hasCurrentUrl =
+            current != null && current.isNotEmpty && current.contains(host);
+        if (!hasCurrentUrl) {
+          final url = await uploadImage(c.id, bytes);
+          await db.setImageUrl(c.id, url);
+          uploaded++;
+        }
+        await db.clearImageBytes(c.id); // safe: upload succeeded above
+        cleared++;
+      } catch (e) {
+        failed++;
+        sampleError ??= _friendly(e);
+      }
+      onProgress?.call(i + 1, ids.length);
+    }
+    if (cleared > 0) {
+      try {
+        await db.vacuum();
+      } catch (_) {/* best effort — bytes are already cleared */}
+      try {
+        await _push(force: true);
+      } catch (_) {/* normal sync retries the deck push */}
+    }
+    return (
+      uploaded: uploaded,
+      cleared: cleared,
+      failed: failed,
+      error: sampleError
+    );
+  }
+
   /// Recovery: list every image already sitting in Storage under this user's
   /// folder and re-link it to its card by the id embedded in the object name
   /// (`{uid}/{micros}-{cardId}.jpg`). Only cards that currently have NO image

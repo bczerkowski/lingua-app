@@ -536,6 +536,12 @@ class AppDatabase extends _$AppDatabase {
         CardsCompanion(imageBytes: Value(bytes), imageSource: Value(source)),
       );
 
+  /// Drop just the local image blob (keeping any imageUrl) — used after an image
+  /// is safely uploaded to Storage, to shrink the local database.
+  Future<void> clearImageBytes(int id) =>
+      (update(cards)..where((t) => t.id.equals(id)))
+          .write(const CardsCompanion(imageBytes: Value(null)));
+
   /// Cards with a local image but no cloud URL yet — the ones to upload.
   Future<List<Flashcard>> cardsNeedingImageUpload() => (select(cards)
         ..where((t) => t.imageBytes.isNotNull() & t.imageUrl.isNull()))
