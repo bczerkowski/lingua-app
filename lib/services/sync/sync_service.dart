@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/database.dart';
+import '../media/compress_image.dart';
 import 'supabase_config.dart';
 
 enum SyncState { offline, syncing, synced, error }
@@ -386,7 +387,9 @@ class SyncService extends ChangeNotifier {
   Future<String> uploadImage(int cardId, Uint8List bytes) async {
     if (!signedIn) throw 'not signed in';
     await _ensureToken();
-    final path = '$_uid/${DateTime.now().microsecondsSinceEpoch}-$cardId.jpg';
+    // Deterministic path (one object per card) + upsert, so re-uploading an
+    // image overwrites the old one instead of piling up duplicates in Storage.
+    final path = '$_uid/$cardId.jpg';
     final r = await _dio.post(
       '/storage/v1/object/$imageBucket/$path',
       data: Stream.fromIterable([bytes]),
@@ -526,28 +529,25 @@ class SyncService extends ChangeNotifier {
         if (list.length < pageSize) break;
         offset += pageSize;
       }
-      // Map cardId -> the most recent object filename for it.
-      final re = RegExp(r'(\d+)-(\d+)\.jpg$'); // {micros}-{cardId}.jpg
-      final best = <int, ({String name, int micros})>{};
+      // Map cardId -> object filename. Handles both the new deterministic name
+      // ({cardId}.jpg) and the old timestamped one ({micros}-{cardId}.jpg): the
+      // trailing number before .jpg is always the card id.
+      final re = RegExp(r'(\d+)\.jpg$');
+      final best = <int, String>{};
       for (final n in names) {
         final m = re.firstMatch(n);
         if (m == null) continue;
-        final micros = int.tryParse(m.group(1)!) ?? 0;
-        final cardId = int.tryParse(m.group(2)!) ?? -1;
+        final cardId = int.tryParse(m.group(1)!) ?? -1;
         if (cardId < 0) continue;
-        final cur = best[cardId];
-        if (cur == null || micros > cur.micros) {
-          best[cardId] = (name: n, micros: micros);
-        }
+        best[cardId] = n; // later entries win; fine with deterministic names
       }
       // Re-link only cards that currently have no image at all.
       final missing = await db.cardsWithoutImage();
       var relinked = 0;
       for (final c in missing) {
-        final b = best[c.id];
-        if (b == null) continue;
-        final path =
-            b.name.startsWith('$_uid/') ? b.name : '$_uid/${b.name}';
+        final name = best[c.id];
+        if (name == null) continue;
+        final path = name.startsWith('$_uid/') ? name : '$_uid/$name';
         final url =
             '${SupabaseConfig.url}/storage/v1/object/public/$imageBucket/$path';
         await db.setImageUrl(c.id, url);
@@ -562,6 +562,71 @@ class SyncService extends ChangeNotifier {
     } catch (e) {
       return (relinked: 0, found: 0, error: _friendly(e));
     }
+  }
+
+  /// Delete every object under this user's Storage folder (clean slate before
+  /// re-uploading), so old/oversized images never pile up past the quota.
+  Future<void> _deleteAllUserImages() async {
+    await _ensureToken();
+    final names = <String>[];
+    var offset = 0;
+    const page = 1000;
+    while (true) {
+      final r = await _dio.post('/storage/v1/object/list/$imageBucket',
+          data: {'prefix': '$_uid/', 'limit': page, 'offset': offset},
+          options: Options(headers: _restHeaders));
+      final list = (r.data as List?) ?? const [];
+      for (final o in list) {
+        final n = (o is Map) ? o['name'] : null;
+        if (n is String) names.add('$_uid/$n');
+      }
+      if (list.length < page) break;
+      offset += page;
+    }
+    for (var i = 0; i < names.length; i += 100) {
+      final batch = names.sublist(i, (i + 100).clamp(0, names.length));
+      await _dio.delete('/storage/v1/object/$imageBucket',
+          data: {'prefixes': batch}, options: Options(headers: _restHeaders));
+    }
+  }
+
+  /// Make images available on other devices for free: upload a TINY version of
+  /// each local image to Storage (so the whole set stays well under the free
+  /// 1 GB) and record the URL — while KEEPING the full local bytes, so this
+  /// device still shows full quality offline. Clears Storage first so nothing
+  /// piles up. Returns (uploaded, failed).
+  Future<({int uploaded, int failed, String? error})>
+      shareImagesToStorageSmall(
+          {void Function(int done, int total)? onProgress}) async {
+    if (!signedIn) return (uploaded: 0, failed: 0, error: 'not signed in');
+    try {
+      await _deleteAllUserImages();
+    } catch (_) {/* best effort — upsert still overwrites per card */}
+    final ids = await db.cardIdsWithLocalImage();
+    var uploaded = 0, failed = 0;
+    String? sampleError;
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        final list = await db.getCards([ids[i]]);
+        if (list.isEmpty) continue;
+        final bytes = list.first.imageBytes;
+        if (bytes == null) continue;
+        final tiny = await compressImage(bytes, maxDim: 320, quality: 0.45);
+        final url = await uploadImage(ids[i], tiny);
+        await db.setImageUrl(ids[i], url); // keep local bytes (full quality here)
+        uploaded++;
+      } catch (e) {
+        failed++;
+        sampleError ??= _friendly(e);
+      }
+      onProgress?.call(i + 1, ids.length);
+    }
+    if (uploaded > 0) {
+      try {
+        await _push(force: true);
+      } catch (_) {/* normal sync retries */}
+    }
+    return (uploaded: uploaded, failed: failed, error: sampleError);
   }
 
   // --- Change listeners --------------------------------------------------

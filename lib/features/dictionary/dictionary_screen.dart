@@ -1422,6 +1422,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'migrate_images') _migrateImages(context);
         if (v == 'offload_images') _offloadImages(context);
         if (v == 'shrink_cloud') _shrinkCloud(context);
+        if (v == 'share_images_phone') _shareImagesPhone(context);
         if (v == 'recover_images') _recoverImages(context);
         if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_images') _importImages(context);
@@ -1605,6 +1606,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.cloud_done_outlined),
             title: Text('Napraw chmurę (wyślij lekki deck)'),
             subtitle: Text('Nadpisuje przeładowaną chmurę małą wersją bez obrazów'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'share_images_phone',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.phone_iphone_rounded),
+            title: Text('Udostępnij obrazy na telefon (małe)'),
+            subtitle: Text('Male kopie do chmury; pełna jakość zostaje tutaj'),
           ),
         ),
         PopupMenuItem(
@@ -1970,6 +1980,68 @@ class _ManageMenu extends StatelessWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));
     }
+  }
+
+  /// Upload a tiny copy of every image to Storage (for the phone / other
+  /// devices) while keeping the full-quality local copies here. Shows a live
+  /// progress dialog since it covers the whole deck.
+  Future<void> _shareImagesPhone(BuildContext context) async {
+    final sync = AppServices.of(context).sync;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!sync.signedIn) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Zaloguj się do Cloud sync (⋮ → Cloud sync).')));
+      return;
+    }
+    final ok = await _confirm(
+      context,
+      'Udostępnić obrazy na telefon?',
+      'Wyślę MAŁE kopie wszystkich obrazów do chmury (zmieszczą się w darmowym '
+          '1 GB), a pełna jakość zostaje na tym komputerze. Potem na telefonie '
+          'zalogujesz się i zobaczysz obrazy. Potrwa kilka minut — nie zamykaj '
+          'karty.',
+    );
+    if (ok != true || !context.mounted) return;
+
+    final progress = ValueNotifier<List<int>>(const [0, 0]);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Wysyłam małe obrazy do chmury…'),
+        content: ValueListenableBuilder<List<int>>(
+          valueListenable: progress,
+          builder: (_, v, __) {
+            final done = v[0], total = v[1];
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                    value: total == 0 ? null : done / total),
+                const SizedBox(height: 14),
+                Text(total == 0 ? 'Czyszczę i przygotowuję…' : '$done / $total'),
+                const SizedBox(height: 6),
+                const Text('Nie zamykaj karty.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.muted)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    final r = await sync.shareImagesToStorageSmall(
+        onProgress: (d, t) => progress.value = [d, t]);
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    progress.dispose();
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 12),
+      content: Text(r.uploaded == 0 && r.error != null
+          ? 'Nie udało się: ${r.error}'
+          : 'Gotowe: wysłano ${r.uploaded} małych obrazów'
+              '${r.failed > 0 ? " (${r.failed} pominięto)" : ""}. '
+              'Teraz zaloguj się na telefonie — obrazy się pokażą.'),
+    ));
   }
 
   /// Overwrite the cloud deck with the current (image-free) one, to shrink a
