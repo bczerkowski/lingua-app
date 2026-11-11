@@ -351,6 +351,19 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Force-push the current deck to the cloud, overwriting whatever is there.
+  /// The deck no longer carries image bytes, so this replaces an over-quota
+  /// cloud copy with a small one. userInitiated bypasses the tiny-deck guard.
+  Future<void> pushNow() async {
+    if (!signedIn) return;
+    _set(SyncState.syncing, 'Wysyłam…');
+    try {
+      await _push(force: true, userInitiated: true);
+    } catch (e) {
+      _set(SyncState.error, _friendly(e));
+    }
+  }
+
   /// Manual "Sync now" — force a pull of the latest cloud deck.
   Future<void> pullNow() async {
     if (!signedIn) return;

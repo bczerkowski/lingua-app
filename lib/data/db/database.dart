@@ -853,11 +853,11 @@ class AppDatabase extends _$AppDatabase {
             'tags': c.tags,
             'gender': c.gender,
             'catalogueId': c.catalogueId,
-            // Once an image is in Storage (imageUrl set) we sync only the URL,
-            // never the heavy base64 — that's what keeps the deck JSON small.
-            'imageBytes': c.imageUrl != null || c.imageBytes == null
-                ? null
-                : base64Encode(c.imageBytes!),
+            // NEVER embed the image bytes in the synced deck. With thousands of
+            // images the base64 bloated the cloud DB past the free quota. Images
+            // travel only as a Storage URL (or stay local-only); the full-size
+            // local copies are kept in the chunked image backup instead.
+            'imageBytes': null,
             'imageUrl': c.imageUrl,
             'imageSource': c.imageSource,
             'isFavorite': c.isFavorite,

@@ -1421,6 +1421,7 @@ class _ManageMenu extends StatelessWidget {
         if (v == 'export_image') _exportImage(context);
         if (v == 'migrate_images') _migrateImages(context);
         if (v == 'offload_images') _offloadImages(context);
+        if (v == 'shrink_cloud') _shrinkCloud(context);
         if (v == 'recover_images') _recoverImages(context);
         if (v == 'repair_image_links') _repairImageLinks(context);
         if (v == 'import_images') _importImages(context);
@@ -1595,6 +1596,15 @@ class _ManageMenu extends StatelessWidget {
             leading: Icon(Icons.cloud_upload_outlined),
             title: Text('Przenieś obrazy do chmury (odchudź)'),
             subtitle: Text('Kopia w chmurze + drugie urządzenie, baza chudnie'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'shrink_cloud',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_done_outlined),
+            title: Text('Napraw chmurę (wyślij lekki deck)'),
+            subtitle: Text('Nadpisuje przeładowaną chmurę małą wersją bez obrazów'),
           ),
         ),
         PopupMenuItem(
@@ -1959,6 +1969,29 @@ class _ManageMenu extends StatelessWidget {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Image sync failed: $e')));
+    }
+  }
+
+  /// Overwrite the cloud deck with the current (image-free) one, to shrink a
+  /// cloud copy that went over the free quota from embedded images.
+  Future<void> _shrinkCloud(BuildContext context) async {
+    final sync = AppServices.of(context).sync;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!sync.signedIn) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Zaloguj się do Cloud sync (⋮ → Cloud sync).')));
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Wysyłam lekki deck do chmury…')));
+    try {
+      await sync.pushNow();
+      messenger.showSnackBar(const SnackBar(
+          duration: Duration(seconds: 8),
+          content: Text('Gotowe — chmura ma teraz lekką wersję bez obrazów. '
+              'Zużycie w Supabase spadnie w ciągu paru minut.')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Nie udało się: $e')));
     }
   }
 
